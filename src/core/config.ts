@@ -47,7 +47,9 @@ export const DEFAULT_PLUGINS: PluginName[] = [
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: Required<CliantaConfig> = {
+    projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
+    authToken: '',
     debug: false,
     autoPageView: true,
     plugins: DEFAULT_PLUGINS,

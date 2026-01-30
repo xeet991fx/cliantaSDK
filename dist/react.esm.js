@@ -3,6 +3,9 @@
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
+import { jsx } from 'react/jsx-runtime';
+import { createContext, useRef, useEffect, useContext } from 'react';
+
 /**
  * Clianta SDK - Configuration
  * @see SDK_VERSION in core/config.ts
@@ -2576,5 +2579,79 @@ if (typeof window !== 'undefined') {
     };
 }
 
-export { CRMClient, ConsentManager, SDK_VERSION, Tracker, clianta, clianta as default };
-//# sourceMappingURL=clianta.esm.js.map
+/**
+ * Clianta SDK - React Integration
+ *
+ * Provides CliantaProvider component for easy React/Next.js integration
+ * using the clianta.config.ts pattern.
+ */
+// Context for accessing tracker throughout the app
+const CliantaContext = createContext(null);
+/**
+ * CliantaProvider - Wrap your app to enable tracking
+ *
+ * @example
+ * // In clianta.config.ts:
+ * import { CliantaConfig } from '@clianta/sdk';
+ *
+ * const config: CliantaConfig = {
+ *   projectId: 'your-project-id',
+ *   apiEndpoint: 'https://api.clianta.online',
+ *   debug: process.env.NODE_ENV === 'development',
+ * };
+ *
+ * export default config;
+ *
+ * // In app/layout.tsx or main.tsx:
+ * import { CliantaProvider } from '@clianta/sdk/react';
+ * import cliantaConfig from '../clianta.config';
+ *
+ * <CliantaProvider config={cliantaConfig}>
+ *   {children}
+ * </CliantaProvider>
+ */
+function CliantaProvider({ config, children }) {
+    const trackerRef = useRef(null);
+    useEffect(() => {
+        // Initialize tracker with config
+        const projectId = config.projectId;
+        if (!projectId) {
+            console.error('[Clianta] Missing projectId in config. Please add projectId to your clianta.config.ts');
+            return;
+        }
+        // Extract projectId (handled separately) and pass rest as options
+        const { projectId: _, ...options } = config;
+        trackerRef.current = clianta(projectId, options);
+        // Cleanup: flush pending events on unmount
+        return () => {
+            trackerRef.current?.flush();
+        };
+    }, [config]);
+    return (jsx(CliantaContext.Provider, { value: trackerRef.current, children: children }));
+}
+/**
+ * useClianta - Hook to access tracker in any component
+ *
+ * @example
+ * const tracker = useClianta();
+ * tracker?.track('button_click', 'CTA Button');
+ */
+function useClianta() {
+    return useContext(CliantaContext);
+}
+/**
+ * useClinataTrack - Convenience hook for tracking events
+ *
+ * @example
+ * const track = useCliantaTrack();
+ * track('purchase', 'Order Completed', { orderId: '123' });
+ */
+function useCliantaTrack() {
+    const tracker = useClianta();
+    return (eventType, eventName, properties) => {
+        tracker?.track(eventType, eventName, properties);
+    };
+}
+
+export { CliantaProvider, useClianta, useCliantaTrack };
+//# sourceMappingURL=react.esm.js.map

@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.1.0
+ * Clianta SDK v1.1.1
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -36,7 +36,9 @@ const DEFAULT_PLUGINS = [
 ];
 /** Default configuration values */
 const DEFAULT_CONFIG = {
+    projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
+    authToken: '',
     debug: false,
     autoPageView: true,
     plugins: DEFAULT_PLUGINS,

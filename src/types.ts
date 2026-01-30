@@ -8,8 +8,14 @@
 // ============================================
 
 export interface CliantaConfig {
+    /** Project ID (required for config file pattern) */
+    projectId?: string;
+
     /** Backend API endpoint URL */
     apiEndpoint?: string;
+
+    /** Auth token for server-side API access */
+    authToken?: string;
 
     /** Enable debug mode with verbose logging */
     debug?: boolean;

@@ -69,13 +69,55 @@ export default [
         ],
     },
 
-    // TypeScript declarations
+    // React integration builds (ESM, CJS)
+    {
+        input: 'src/react.tsx',
+        output: [
+            {
+                file: 'dist/react.esm.js',
+                format: 'esm',
+                banner,
+                sourcemap: true,
+            },
+            {
+                file: 'dist/react.cjs.js',
+                format: 'cjs',
+                banner,
+                sourcemap: true,
+                exports: 'named',
+            },
+        ],
+        external: ['react', 'react/jsx-runtime'],
+        plugins: [
+            resolve({
+                browser: true,
+            }),
+            commonjs(),
+            typescript({
+                tsconfig: './tsconfig.json',
+                declaration: false,
+            }),
+        ],
+    },
+
+    // TypeScript declarations - main
     {
         input: 'src/index.ts',
         output: {
             file: 'dist/index.d.ts',
             format: 'es',
         },
+        plugins: [dts()],
+    },
+
+    // TypeScript declarations - react
+    {
+        input: 'src/react.tsx',
+        output: {
+            file: 'dist/react.d.ts',
+            format: 'es',
+        },
+        external: ['react'],
         plugins: [dts()],
     },
 ];

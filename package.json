@@ -1,6 +1,6 @@
 {
     "name": "@clianta/sdk",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "type": "module",
     "description": "Professional CRM SDK for Clianta - Track visitors, manage contacts, opportunities, and analyze behavior",
     "main": "dist/clianta.cjs.js",
@@ -13,6 +13,12 @@
             "import": "./dist/clianta.esm.js",
             "require": "./dist/clianta.cjs.js",
             "default": "./dist/clianta.esm.js"
+        },
+        "./react": {
+            "types": "./dist/react.d.ts",
+            "import": "./dist/react.esm.js",
+            "require": "./dist/react.cjs.js",
+            "default": "./dist/react.esm.js"
         }
     },
     "files": [
@@ -40,7 +46,8 @@
         "clianta",
         "contacts",
         "opportunities",
-        "sales-automation"
+        "sales-automation",
+        "react"
     ],
     "author": "Clianta",
     "license": "MIT",
@@ -49,12 +56,21 @@
         "type": "git",
         "url": "https://github.com/xeet991fx/cliantaSDK"
     },
+    "peerDependencies": {
+        "react": ">=17.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        }
+    },
     "devDependencies": {
         "@rollup/plugin-commonjs": "^25.0.7",
         "@rollup/plugin-node-resolve": "^15.2.3",
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^11.1.6",
         "@types/node": "^20.11.0",
+        "@types/react": "^19.2.10",
         "rimraf": "^5.0.5",
         "rollup": "^4.9.6",
         "rollup-plugin-dts": "^6.1.0",
