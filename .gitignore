@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output (included in npm package)
+# dist/  <- Don't ignore, needed for npm publish
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Tarball
+*.tgz

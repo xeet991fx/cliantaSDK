@@ -1,0 +1,69 @@
+{
+    "name": "@clianta/sdk",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Professional CRM SDK for Clianta - Track visitors, manage contacts, opportunities, and analyze behavior",
+    "main": "dist/clianta.cjs.js",
+    "module": "dist/clianta.esm.js",
+    "browser": "dist/clianta.umd.min.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/clianta.esm.js",
+            "require": "./dist/clianta.cjs.js",
+            "default": "./dist/clianta.esm.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE",
+        "CHANGELOG.md"
+    ],
+    "scripts": {
+        "build": "rollup -c",
+        "build:watch": "rollup -c -w",
+        "test": "vitest",
+        "test:coverage": "vitest --coverage",
+        "lint": "eslint src --ext .ts",
+        "typecheck": "tsc --noEmit",
+        "clean": "rimraf dist",
+        "prepublishOnly": "npm run clean && npm run build"
+    },
+    "keywords": [
+        "analytics",
+        "tracking",
+        "crm",
+        "lead-generation",
+        "visitor-tracking",
+        "clianta",
+        "contacts",
+        "opportunities",
+        "sales-automation"
+    ],
+    "author": "Clianta",
+    "license": "MIT",
+    "homepage": "https://clianta.online",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/xeet991fx/cliantaSDK"
+    },
+    "devDependencies": {
+        "@rollup/plugin-commonjs": "^25.0.7",
+        "@rollup/plugin-node-resolve": "^15.2.3",
+        "@rollup/plugin-terser": "^0.4.4",
+        "@rollup/plugin-typescript": "^11.1.6",
+        "@types/node": "^20.11.0",
+        "rimraf": "^5.0.5",
+        "rollup": "^4.9.6",
+        "rollup-plugin-dts": "^6.1.0",
+        "tslib": "^2.6.2",
+        "typescript": "^5.3.3",
+        "vitest": "^1.2.2"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "sideEffects": false
+}

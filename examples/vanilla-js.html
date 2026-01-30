@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clianta SDK - Vanilla JavaScript Example</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .section {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #0052a3;
+        }
+
+        .output {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Clianta SDK - Vanilla JavaScript Example</h1>
+
+    <div class="section">
+        <h2>1. SDK Initialization</h2>
+        <p>The SDK is automatically initialized on page load.</p>
+        <button onclick="showVisitorInfo()">Show Visitor Info</button>
+        <button onclick="toggleDebug()">Toggle Debug Mode</button>
+        <div id="visitor-info" class="output" style="display:none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. Track Custom Events</h2>
+        <button onclick="trackButtonClick()">Track Button Click</button>
+        <button onclick="trackCustomEvent()">Track Custom Event</button>
+        <div id="event-output" class="output" style="display:none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Identify Visitor</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="text" id="firstName" placeholder="First Name">
+        <input type="text" id="lastName" placeholder="Last Name">
+        <button onclick="identifyUser()">Identify</button>
+        <div id="identify-output" class="output" style="display:none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. CRM API Example</h2>
+        <input type="text" id="authToken" placeholder="Auth Token (optional)">
+        <button onclick="testCRMAPI()">Test CRM API</button>
+        <div id="crm-output" class="output" style="display:none;"></div>
+    </div>
+
+    <!-- Load Clianta SDK from local build -->
+    <script src="../dist/clianta.umd.min.js"></script>
+
+    <script>
+        // Initialize tracker
+        const tracker = Clianta.clianta('demo-workspace-id', {
+            apiEndpoint: 'http://localhost:5000',
+            debug: true,
+            autoPageView: true
+        });
+
+        console.log('[Clianta] SDK initialized:', tracker);
+
+        // Show visitor info
+        function showVisitorInfo() {
+            const info = {
+                visitorId: tracker.getVisitorId(),
+                sessionId: tracker.getSessionId(),
+                config: tracker.getConfig()
+            };
+
+            const output = document.getElementById('visitor-info');
+            output.style.display = 'block';
+            output.textContent = JSON.stringify(info, null, 2);
+        }
+
+        // Toggle debug mode
+        let debugEnabled = true;
+        function toggleDebug() {
+            debugEnabled = !debugEnabled;
+            tracker.debug(debugEnabled);
+            alert(`Debug mode ${debugEnabled ? 'enabled' : 'disabled'}`);
+        }
+
+        // Track button click
+        function trackButtonClick() {
+            tracker.track('button_click', 'Demo Button Clicked', {
+                buttonId: 'demo-button',
+                location: 'example-page',
+                timestamp: new Date().toISOString()
+            });
+
+            const output = document.getElementById('event-output');
+            output.style.display = 'block';
+            output.textContent = 'Button click event tracked! Check console for details.';
+        }
+
+        // Track custom event
+        function trackCustomEvent() {
+            tracker.track('custom', 'Custom Event', {
+                category: 'demo',
+                action: 'test',
+                value: 42
+            });
+
+            const output = document.getElementById('event-output');
+            output.style.display = 'block';
+            output.textContent = 'Custom event tracked! Check console for details.';
+        }
+
+        // Identify user
+        function identifyUser() {
+            const email = document.getElementById('email').value;
+            const firstName = document.getElementById('firstName').value;
+            const lastName = document.getElementById('lastName').value;
+
+            if (!email) {
+                alert('Please enter an email');
+                return;
+            }
+
+            tracker.identify(email, {
+                firstName: firstName || undefined,
+                lastName: lastName || undefined,
+                company: 'Demo Company'
+            });
+
+            const output = document.getElementById('identify-output');
+            output.style.display = 'block';
+            output.textContent = `Visitor identified as: ${email}`;
+        }
+
+        // Test CRM API
+        async function testCRMAPI() {
+            const authToken = document.getElementById('authToken').value;
+            const output = document.getElementById('crm-output');
+            output.style.display = 'block';
+
+            try {
+                // Initialize CRM client
+                const crm = new Clianta.CRMClient(
+                    'http://localhost:5000',
+                    'demo-workspace-id',
+                    authToken || undefined
+                );
+
+                output.textContent = 'Testing CRM API...\n\n';
+
+                // Test getting contacts
+                output.textContent += 'Fetching contacts...\n';
+                const contacts = await crm.getContacts({ page: 1, limit: 5 });
+
+                if (contacts.success) {
+                    output.textContent += `Success! Found ${contacts.data?.pagination?.total || 0} contacts\n`;
+                    output.textContent += JSON.stringify(contacts.data, null, 2);
+                } else {
+                    output.textContent += `Error: ${contacts.error}\n`;
+                    output.textContent += 'Note: You need a valid auth token to use the CRM API';
+                }
+            } catch (error) {
+                output.textContent += `Error: ${error.message}\n`;
+                output.textContent += 'Make sure the backend is running on http://localhost:5000';
+            }
+        }
+
+        // Track page view manually
+        tracker.page('Example Page', {
+            category: 'demo',
+            framework: 'vanilla-js'
+        });
+    </script>
+</body>
+
+</html>
