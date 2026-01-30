@@ -1,6 +1,6 @@
 /**
- * MorrisB Tracking SDK - Plugins Index
- * @version 3.0.0
+ * Clianta SDK - Plugins Index
+ * Version is defined in core/config.ts as SDK_VERSION
  */
 
 export { BasePlugin } from './base';
@@ -13,6 +13,7 @@ export { DownloadsPlugin } from './downloads';
 export { ExitIntentPlugin } from './exitIntent';
 export { ErrorsPlugin } from './errors';
 export { PerformancePlugin } from './performance';
+export { PopupFormsPlugin } from './popupForms';
 
 import type { Plugin, PluginName } from '../types';
 import { PageViewPlugin } from './pageView';
@@ -24,6 +25,7 @@ import { DownloadsPlugin } from './downloads';
 import { ExitIntentPlugin } from './exitIntent';
 import { ErrorsPlugin } from './errors';
 import { PerformancePlugin } from './performance';
+import { PopupFormsPlugin } from './popupForms';
 
 /**
  * Get plugin instance by name
@@ -48,7 +50,10 @@ export function getPlugin(name: PluginName): Plugin {
             return new ErrorsPlugin();
         case 'performance':
             return new PerformancePlugin();
+        case 'popupForms':
+            return new PopupFormsPlugin();
         default:
             throw new Error(`Unknown plugin: ${name}`);
     }
 }
+

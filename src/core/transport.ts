@@ -1,7 +1,7 @@
 /**
- * MorrisB Tracking SDK - Transport Layer
+ * Clianta SDK - Transport Layer
  * Handles sending events to the backend with retry logic
- * @version 3.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { TransportConfig, TransportResult, TrackingEvent, IdentifyPayload } from '../types';

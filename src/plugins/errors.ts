@@ -1,6 +1,6 @@
 /**
- * MorrisB Tracking SDK - Error Tracking Plugin
- * @version 3.0.0
+ * Clianta SDK - Error Tracking Plugin
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { PluginName, TrackerCore } from '../types';

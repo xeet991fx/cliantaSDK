@@ -1,303 +1,450 @@
-# @clianta/sdk
+# Clianta SDK
 
-Professional CRM and tracking SDK for Clianta - Track visitors, manage contacts, opportunities, and analyze user behavior.
-
-## Features
-
-### Tracking & Analytics
-- **Page Views** - Automatic page view tracking with SPA support
-- **Form Tracking** - Auto-detect and track form interactions
-- **Scroll Depth** - Track scroll milestones (25%, 50%, 75%, 100%)
-- **Click Tracking** - Track button and CTA clicks
-- **User Engagement** - Detect active user engagement
-- **File Downloads** - Track file downloads
-- **Exit Intent** - Detect when users are about to leave
-- **Error Tracking** - Capture JavaScript errors (optional)
-- **Performance** - Web Vitals and page speed metrics (optional)
-- **Auto-Identify** - Automatically identify leads from form submissions
-- **Offline Support** - Queue events when offline, send when back
-
-### CRM API Client
-- **Contacts Management** - Full CRUD operations for contacts
-- **Opportunities Management** - Create, update, and track sales opportunities
-- **Authenticated Requests** - Secure API access with token authentication
-- **Type-Safe** - Full TypeScript support for all CRM operations
-
-### Developer Experience
-- **Debug Mode** - Verbose logging for troubleshooting
-- **TypeScript Support** - Full type definitions included
-- **Multiple Formats** - UMD, ESM, and CJS builds
-- **Tree-Shakeable** - Import only what you need
-- **Zero Dependencies** - Lightweight and fast
+Professional CRM and tracking SDK for lead generation. Works with any website or JavaScript framework.
 
 ## Installation
 
-### NPM
+### NPM / Yarn (React, Next.js, Vue)
 
 ```bash
 npm install @clianta/sdk
+# or
+yarn add @clianta/sdk
 ```
 
-### Script Tag (CDN)
+### Script Tag (HTML, WordPress, Webflow)
 
 ```html
-<script src="https://unpkg.com/@clianta/sdk@1.0.0/dist/clianta.umd.min.js"></script>
-<script>
-  const tracker = Clianta.clianta('YOUR_WORKSPACE_ID');
-</script>
+<script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
 ```
+
+---
 
 ## Quick Start
 
-### Tracking
+### Script Tag (Any Website)
 
-```javascript
-import { clianta } from '@clianta/sdk';
-
-// Initialize tracker
-const tracker = clianta('YOUR_WORKSPACE_ID', {
-  debug: true,
-  apiEndpoint: 'https://api.clianta.online'
-});
-
-// Track custom event
-tracker.track('custom', 'Button Clicked', {
-  buttonId: 'signup-cta',
-  location: 'hero-section',
-});
-
-// Identify a visitor
-tracker.identify('john@example.com', {
-  firstName: 'John',
-  lastName: 'Doe',
-  company: 'Acme Inc',
-});
-
-// Manual page view (automatic by default)
-tracker.page('Pricing Page', {
-  plan: 'enterprise',
-});
+```html
+<!-- Add before </head> -->
+<script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
+<script>
+  clianta('YOUR_WORKSPACE_ID', {
+    apiEndpoint: 'https://api.clianta.online'
+  });
+</script>
 ```
 
-### CRM API
-
-```javascript
-import { CRMClient } from '@clianta/sdk';
-
-// Initialize CRM client
-const crm = new CRMClient(
-  'https://api.clianta.online',
-  'YOUR_WORKSPACE_ID',
-  'YOUR_AUTH_TOKEN'
-);
-
-// Get all contacts
-const contacts = await crm.getContacts({
-  page: 1,
-  limit: 50,
-  status: 'lead'
-});
-
-// Create a new contact
-const newContact = await crm.createContact({
-  email: 'jane@example.com',
-  firstName: 'Jane',
-  lastName: 'Smith',
-  company: 'Tech Corp'
-});
-
-// Create an opportunity
-const opportunity = await crm.createOpportunity({
-  contactId: newContact.data._id,
-  pipelineId: 'pipeline-id',
-  stageId: 'stage-id',
-  title: 'Enterprise Deal',
-  value: 50000,
-  currency: 'USD'
-});
-
-// Update opportunity stage
-await crm.moveOpportunity(opportunity.data._id, 'new-stage-id');
-```
-
-## Configuration
+### NPM Module
 
 ```typescript
+import { clianta } from '@clianta/sdk';
+
 const tracker = clianta('YOUR_WORKSPACE_ID', {
-  // Backend API URL (auto-detected by default)
   apiEndpoint: 'https://api.clianta.online',
-
-  // Enable debug logging
-  debug: false,
-
-  // Auto-track page views
-  autoPageView: true,
-
-  // Plugins to enable (default: all core plugins)
-  plugins: [
-    'pageView',
-    'forms',
-    'scroll',
-    'clicks',
-    'engagement',
-    'downloads',
-    'exitIntent',
-    // Optional:
-    // 'errors',
-    // 'performance',
-  ],
-
-  // Session timeout (default: 30 minutes)
-  sessionTimeout: 30 * 60 * 1000,
-
-  // Batch size before sending (default: 10)
-  batchSize: 10,
-
-  // Flush interval in ms (default: 5000)
-  flushInterval: 5000,
+  debug: true,
 });
+
+// Track events
+tracker.track('button_click', 'Signup Button', { location: 'hero' });
+
+// Identify users
+tracker.identify('user@example.com', { firstName: 'John' });
 ```
 
-## API Reference
+---
 
-### Tracker Methods
+## Framework Guides
 
-#### `tracker.track(eventType, eventName, properties?)`
-Track a custom event.
+### Next.js (App Router)
 
-#### `tracker.identify(email, traits?)`
-Identify a visitor and link to a contact.
-
-#### `tracker.page(name?, properties?)`
-Track a page view (automatic by default).
-
-#### `tracker.debug(enabled)`
-Enable or disable debug mode.
-
-#### `tracker.getVisitorId()`
-Get the current visitor ID.
-
-#### `tracker.getSessionId()`
-Get the current session ID.
-
-#### `tracker.flush()`
-Force send all queued events.
-
-#### `tracker.reset()`
-Reset visitor data (call on logout).
-
-### CRM Client Methods
-
-#### Contacts
-- `getContacts(params?)` - Get all contacts with pagination
-- `getContact(contactId)` - Get a single contact
-- `createContact(contact)` - Create a new contact
-- `updateContact(contactId, updates)` - Update a contact
-- `deleteContact(contactId)` - Delete a contact
-
-#### Opportunities
-- `getOpportunities(params?)` - Get all opportunities with pagination
-- `getOpportunity(opportunityId)` - Get a single opportunity
-- `createOpportunity(opportunity)` - Create a new opportunity
-- `updateOpportunity(opportunityId, updates)` - Update an opportunity
-- `deleteOpportunity(opportunityId)` - Delete an opportunity
-- `moveOpportunity(opportunityId, stageId)` - Move opportunity to a different stage
-
-## Framework Integration
-
-### React
+Create a provider component:
 
 ```tsx
+// components/CliantaProvider.tsx
+'use client';
+
+import { useEffect } from 'react';
+import { clianta } from '@clianta/sdk';
+
+export function CliantaProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const tracker = clianta(process.env.NEXT_PUBLIC_WORKSPACE_ID!, {
+      apiEndpoint: process.env.NEXT_PUBLIC_API_ENDPOINT,
+      debug: process.env.NODE_ENV === 'development',
+    });
+
+    return () => { tracker.flush(); };
+  }, []);
+
+  return <>{children}</>;
+}
+```
+
+Use in your layout:
+
+```tsx
+// app/layout.tsx
+import { CliantaProvider } from '@/components/CliantaProvider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <CliantaProvider>{children}</CliantaProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+Environment variables (`.env.local`):
+
+```bash
+NEXT_PUBLIC_WORKSPACE_ID=your-workspace-id
+NEXT_PUBLIC_API_ENDPOINT=https://api.clianta.online
+```
+
+---
+
+### React (Vite / CRA)
+
+```tsx
+// App.tsx
 import { useEffect } from 'react';
 import { clianta } from '@clianta/sdk';
 
 function App() {
   useEffect(() => {
-    const tracker = clianta('YOUR_WORKSPACE_ID', {
-      debug: process.env.NODE_ENV === 'development'
+    const tracker = clianta(import.meta.env.VITE_WORKSPACE_ID, {
+      apiEndpoint: import.meta.env.VITE_API_ENDPOINT,
     });
 
-    return () => {
-      tracker.flush();
-    };
+    return () => { tracker.flush(); };
   }, []);
 
   return <div>Your App</div>;
 }
 ```
 
-### Next.js
+Track events in components:
 
 ```tsx
-// app/layout.tsx or pages/_app.tsx
 import { clianta } from '@clianta/sdk';
 
-if (typeof window !== 'undefined') {
-  clianta('YOUR_WORKSPACE_ID');
+function SignupButton() {
+  const handleClick = () => {
+    const tracker = clianta(import.meta.env.VITE_WORKSPACE_ID);
+    tracker.track('button_click', 'Signup CTA', { location: 'navbar' });
+  };
+
+  return <button onClick={handleClick}>Sign Up</button>;
 }
 ```
 
+---
+
 ### Vue.js
+
+```typescript
+// plugins/clianta.ts
+import { clianta } from '@clianta/sdk';
+
+export default {
+  install(app: any) {
+    const tracker = clianta(import.meta.env.VITE_WORKSPACE_ID, {
+      apiEndpoint: import.meta.env.VITE_API_ENDPOINT,
+    });
+
+    app.config.globalProperties.$clianta = tracker;
+    app.provide('clianta', tracker);
+  }
+};
+```
 
 ```vue
 <script setup>
-import { onMounted, onUnmounted } from 'vue';
-import { clianta } from '@clianta/sdk';
+import { inject } from 'vue';
+const tracker = inject('clianta');
 
-let tracker;
-
-onMounted(() => {
-  tracker = clianta('YOUR_WORKSPACE_ID');
-});
-
-onUnmounted(() => {
-  tracker?.flush();
-});
+const trackClick = () => {
+  tracker.track('button_click', 'CTA Clicked');
+};
 </script>
 ```
 
-## TypeScript Support
+---
 
-The SDK is written in TypeScript and includes full type definitions:
+### Plain HTML / WordPress / Webflow
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Website</title>
+  
+  <!-- Clianta SDK -->
+  <script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
+  <script>
+    var tracker = clianta('YOUR_WORKSPACE_ID', {
+      apiEndpoint: 'https://api.clianta.online'
+    });
+  </script>
+</head>
+<body>
+  <button onclick="tracker.track('button_click', 'CTA Clicked')">
+    Click Me
+  </button>
+</body>
+</html>
+```
+
+**WordPress**: Add to `Appearance > Theme Editor > header.php` before `</head>`
+
+**Webflow**: Add to `Project Settings > Custom Code > Head Code`
+
+**Shopify**: Add to `Online Store > Themes > Edit Code > theme.liquid`
+
+---
+
+## Configuration
 
 ```typescript
-import type { 
-  TrackerCore, 
-  Contact, 
-  Opportunity,
-  ApiResponse 
+const tracker = clianta('WORKSPACE_ID', {
+  // API endpoint (required for self-hosted)
+  apiEndpoint: 'https://api.clianta.online',
+  
+  // Debug mode (console logging)
+  debug: false,
+  
+  // Auto track page views
+  autoPageView: true,
+  
+  // Plugins to enable
+  plugins: [
+    'pageView',    // Page views with SPA support
+    'forms',       // Auto-detect forms
+    'scroll',      // Scroll depth tracking
+    'clicks',      // Button/CTA clicks
+    'engagement',  // User engagement
+    'downloads',   // File downloads
+    'exitIntent',  // Exit intent detection
+    'errors',      // JavaScript errors (optional)
+    'performance', // Web Vitals (optional)
+  ],
+  
+  // Session timeout (30 min default)
+  sessionTimeout: 30 * 60 * 1000,
+  
+  // Events per batch
+  batchSize: 10,
+  
+  // Flush interval (ms)
+  flushInterval: 5000,
+  
+  // GDPR Consent Configuration
+  consent: {
+    waitForConsent: true,   // Buffer events until consent
+    anonymousMode: true,    // Use anonymous ID until consent
+  },
+  
+  // Cookie-less mode (GDPR friendly)
+  cookielessMode: false,
+});
+```
+
+---
+
+## API Reference
+
+### `tracker.track(eventType, eventName, properties?)`
+
+Track custom events:
+
+```typescript
+tracker.track('button_click', 'Add to Cart', {
+  productId: '123',
+  price: 29.99,
+});
+```
+
+### `tracker.identify(email, traits?)`
+
+Identify a visitor:
+
+```typescript
+tracker.identify('john@example.com', {
+  firstName: 'John',
+  lastName: 'Doe',
+  company: 'Acme Inc',
+  phone: '+1234567890',
+});
+```
+
+### `tracker.page(name?, properties?)`
+
+Track page views manually:
+
+```typescript
+tracker.page('Pricing Page', { plan: 'enterprise' });
+```
+
+### `tracker.consent(state)`
+
+Update consent state (GDPR):
+
+```typescript
+tracker.consent({
+  analytics: true,
+  marketing: false,
+  personalization: true,
+});
+```
+
+### `tracker.getConsentState()`
+
+Get current consent:
+
+```typescript
+const state = tracker.getConsentState();
+// { analytics: true, marketing: false, personalization: false }
+```
+
+### `tracker.deleteData()`
+
+Delete all stored data (GDPR right-to-erasure):
+
+```typescript
+tracker.deleteData();
+```
+
+### `tracker.debug(enabled)`
+
+Toggle debug mode:
+
+```typescript
+tracker.debug(true); // Enable console logging
+```
+
+### `tracker.getVisitorId()` / `tracker.getSessionId()`
+
+Get current IDs:
+
+```typescript
+const visitorId = tracker.getVisitorId();
+const sessionId = tracker.getSessionId();
+```
+
+### `tracker.flush()`
+
+Force send queued events:
+
+```typescript
+await tracker.flush();
+```
+
+### `tracker.reset()`
+
+Reset visitor (for logout):
+
+```typescript
+tracker.reset();
+```
+
+---
+
+## GDPR Compliance
+
+### Wait for Consent
+
+Buffer all events until user grants consent:
+
+```typescript
+const tracker = clianta('WORKSPACE_ID', {
+  consent: {
+    waitForConsent: true,
+  },
+});
+
+// Events are buffered...
+tracker.track('page_view', 'Home');
+
+// User accepts cookies
+tracker.consent({ analytics: true });
+// Buffered events are now sent
+```
+
+### Anonymous Mode
+
+Track without persistent visitor ID until consent:
+
+```typescript
+const tracker = clianta('WORKSPACE_ID', {
+  consent: {
+    anonymousMode: true,
+  },
+});
+
+// Uses temporary anon_xxx ID
+tracker.track('page_view', 'Home');
+
+// User accepts - upgrades to persistent ID
+tracker.consent({ analytics: true });
+```
+
+### Cookie-less Mode
+
+No persistent storage (session only):
+
+```typescript
+const tracker = clianta('WORKSPACE_ID', {
+  cookielessMode: true,
+});
+// Visitor ID stored in sessionStorage only
+```
+
+### Data Deletion
+
+Allow users to delete their data:
+
+```typescript
+function handleDeleteDataRequest() {
+  tracker.deleteData();
+  showConfirmation('Your data has been deleted');
+}
+```
+
+---
+
+## TypeScript
+
+Full TypeScript support included:
+
+```typescript
+import {
+  clianta,
+  type TrackerCore,
+  type MorrisBConfig,
+  type ConsentState,
+  type TrackingEvent,
 } from '@clianta/sdk';
-
-const tracker: TrackerCore = clianta('workspace-id');
-
-const response: ApiResponse<Contact> = await crm.getContact('contact-id');
 ```
 
-## Development
+---
 
-```bash
-# Install dependencies
-npm install
+## Self-Hosted
 
-# Build
-npm run build
+For self-hosted deployments, configure the API endpoint:
 
-# Watch mode
-npm run build:watch
-
-# Run tests
-npm test
-
-# Type check
-npm run typecheck
+```typescript
+const tracker = clianta('WORKSPACE_ID', {
+  apiEndpoint: 'https://your-backend.com',
+});
 ```
 
-## License
-
-MIT © Clianta
+---
 
 ## Support
 
 - Documentation: https://docs.clianta.online
-- Issues: https://github.com/xeet991fx/cliantaSDK/issues
-- Website: https://clianta.online
+- Issues: https://github.com/clianta/sdk/issues
+- Email: support@clianta.online

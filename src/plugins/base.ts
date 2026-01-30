@@ -1,6 +1,6 @@
 /**
- * MorrisB Tracking SDK - Plugin Base
- * @version 3.0.0
+ * Clianta SDK - Plugin Base
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { Plugin, PluginName, TrackerCore } from '../types';

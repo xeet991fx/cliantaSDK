@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.0.0
+ * Clianta SDK v1.1.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -11,10 +11,10 @@
 
     /**
      * Clianta SDK - Configuration
-     * @version 1.0.0
+     * @see SDK_VERSION in core/config.ts
      */
     /** SDK Version */
-    const SDK_VERSION = '1.0.0';
+    const SDK_VERSION = '1.1.0';
     /** Default API endpoint based on environment */
     const getDefaultApiEndpoint = () => {
         if (typeof window === 'undefined')
@@ -34,6 +34,7 @@
         'engagement',
         'downloads',
         'exitIntent',
+        'popupForms',
     ];
     /** Default configuration values */
     const DEFAULT_CONFIG = {
@@ -48,9 +49,11 @@
             defaultConsent: { analytics: true, marketing: false, personalization: false },
             waitForConsent: false,
             storageKey: 'mb_consent',
+            anonymousMode: false,
         },
         cookieDomain: '',
         useCookies: false,
+        cookielessMode: false,
     };
     /** Storage keys */
     const STORAGE_KEYS = {
@@ -84,8 +87,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Debug Logger
-     * @version 3.0.0
+     * Clianta SDK - Debug Logger
+     * @see SDK_VERSION in core/config.ts
      */
     const LOG_PREFIX = '[Clianta]';
     const LOG_STYLES = {
@@ -155,9 +158,9 @@
     const logger = createLogger(false);
 
     /**
-     * MorrisB Tracking SDK - Transport Layer
+     * Clianta SDK - Transport Layer
      * Handles sending events to the backend with retry logic
-     * @version 3.0.0
+     * @see SDK_VERSION in core/config.ts
      */
     const DEFAULT_TIMEOUT = 10000; // 10 seconds
     const DEFAULT_MAX_RETRIES = 3;
@@ -281,8 +284,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Utility Functions
-     * @version 3.0.0
+     * Clianta SDK - Utility Functions
+     * @see SDK_VERSION in core/config.ts
      */
     // ============================================
     // UUID GENERATION
@@ -568,9 +571,9 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Event Queue
+     * Clianta SDK - Event Queue
      * Handles batching and flushing of events
-     * @version 3.0.0
+     * @see SDK_VERSION in core/config.ts
      */
     const MAX_QUEUE_SIZE = 1000;
     /**
@@ -745,8 +748,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Plugin Base
-     * @version 3.0.0
+     * Clianta SDK - Plugin Base
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Base class for plugins
@@ -769,8 +772,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Page View Plugin
-     * @version 3.0.0
+     * Clianta SDK - Page View Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Page View Plugin - Tracks page views
@@ -818,8 +821,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Scroll Depth Plugin
-     * @version 3.0.0
+     * Clianta SDK - Scroll Depth Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Scroll Depth Plugin - Tracks scroll milestones
@@ -886,8 +889,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Form Tracking Plugin
-     * @version 3.0.0
+     * Clianta SDK - Form Tracking Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Form Tracking Plugin - Auto-tracks form views, interactions, and submissions
@@ -994,8 +997,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Click Tracking Plugin
-     * @version 3.0.0
+     * Clianta SDK - Click Tracking Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Click Tracking Plugin - Tracks button and CTA clicks
@@ -1036,8 +1039,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Engagement Plugin
-     * @version 3.0.0
+     * Clianta SDK - Engagement Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Engagement Plugin - Tracks user engagement and time on page
@@ -1118,8 +1121,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Downloads Plugin
-     * @version 3.0.0
+     * Clianta SDK - Downloads Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Downloads Plugin - Tracks file downloads
@@ -1166,8 +1169,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Exit Intent Plugin
-     * @version 3.0.0
+     * Clianta SDK - Exit Intent Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Exit Intent Plugin - Detects when user intends to leave the page
@@ -1209,8 +1212,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Error Tracking Plugin
-     * @version 3.0.0
+     * Clianta SDK - Error Tracking Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Error Tracking Plugin - Tracks JavaScript errors
@@ -1259,8 +1262,8 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Performance Plugin
-     * @version 3.0.0
+     * Clianta SDK - Performance Plugin
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * Performance Plugin - Tracks page performance and Web Vitals
@@ -1366,8 +1369,420 @@
     }
 
     /**
-     * MorrisB Tracking SDK - Plugins Index
-     * @version 3.0.0
+     * Clianta Tracking SDK - Popup Forms Plugin
+     * @see SDK_VERSION in core/config.ts
+     *
+     * Auto-loads and displays lead capture popups based on triggers
+     */
+    /**
+     * Popup Forms Plugin - Fetches and displays lead capture forms
+     */
+    class PopupFormsPlugin extends BasePlugin {
+        constructor() {
+            super(...arguments);
+            this.name = 'popupForms';
+            this.forms = [];
+            this.shownForms = new Set();
+            this.scrollHandler = null;
+            this.exitHandler = null;
+        }
+        async init(tracker) {
+            super.init(tracker);
+            if (typeof window === 'undefined')
+                return;
+            // Load shown forms from storage
+            this.loadShownForms();
+            // Fetch active forms
+            await this.fetchForms();
+            // Setup triggers
+            this.setupTriggers();
+        }
+        destroy() {
+            this.removeTriggers();
+            super.destroy();
+        }
+        loadShownForms() {
+            try {
+                const stored = localStorage.getItem('clianta_shown_forms');
+                if (stored) {
+                    const data = JSON.parse(stored);
+                    this.shownForms = new Set(data.forms || []);
+                }
+            }
+            catch (e) {
+                // Ignore storage errors
+            }
+        }
+        saveShownForms() {
+            try {
+                localStorage.setItem('clianta_shown_forms', JSON.stringify({
+                    forms: Array.from(this.shownForms),
+                    timestamp: Date.now(),
+                }));
+            }
+            catch (e) {
+                // Ignore storage errors
+            }
+        }
+        async fetchForms() {
+            if (!this.tracker)
+                return;
+            const config = this.tracker.getConfig();
+            const workspaceId = this.tracker.getWorkspaceId();
+            const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+            try {
+                const url = encodeURIComponent(window.location.href);
+                const response = await fetch(`${apiEndpoint}/api/public/lead-forms/${workspaceId}?url=${url}`);
+                if (!response.ok)
+                    return;
+                const data = await response.json();
+                if (data.success && Array.isArray(data.data)) {
+                    this.forms = data.data.filter((form) => this.shouldShowForm(form));
+                }
+            }
+            catch (error) {
+                console.error('[Clianta] Failed to fetch forms:', error);
+            }
+        }
+        shouldShowForm(form) {
+            // Check show frequency
+            if (form.showFrequency === 'once_per_visitor') {
+                if (this.shownForms.has(form._id))
+                    return false;
+            }
+            else if (form.showFrequency === 'once_per_session') {
+                const sessionKey = `clianta_form_${form._id}_shown`;
+                if (sessionStorage.getItem(sessionKey))
+                    return false;
+            }
+            return true;
+        }
+        setupTriggers() {
+            this.forms.forEach(form => {
+                switch (form.trigger.type) {
+                    case 'delay':
+                        setTimeout(() => this.showForm(form), (form.trigger.value || 5) * 1000);
+                        break;
+                    case 'scroll':
+                        this.setupScrollTrigger(form);
+                        break;
+                    case 'exit_intent':
+                        this.setupExitIntentTrigger(form);
+                        break;
+                    case 'click':
+                        this.setupClickTrigger(form);
+                        break;
+                }
+            });
+        }
+        setupScrollTrigger(form) {
+            const threshold = form.trigger.value || 50;
+            this.scrollHandler = () => {
+                const scrollPercent = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
+                if (scrollPercent >= threshold) {
+                    this.showForm(form);
+                    if (this.scrollHandler) {
+                        window.removeEventListener('scroll', this.scrollHandler);
+                    }
+                }
+            };
+            window.addEventListener('scroll', this.scrollHandler, { passive: true });
+        }
+        setupExitIntentTrigger(form) {
+            this.exitHandler = (e) => {
+                if (e.clientY <= 0) {
+                    this.showForm(form);
+                    if (this.exitHandler) {
+                        document.removeEventListener('mouseout', this.exitHandler);
+                    }
+                }
+            };
+            document.addEventListener('mouseout', this.exitHandler);
+        }
+        setupClickTrigger(form) {
+            if (!form.trigger.selector)
+                return;
+            const elements = document.querySelectorAll(form.trigger.selector);
+            elements.forEach(el => {
+                el.addEventListener('click', () => this.showForm(form));
+            });
+        }
+        removeTriggers() {
+            if (this.scrollHandler) {
+                window.removeEventListener('scroll', this.scrollHandler);
+            }
+            if (this.exitHandler) {
+                document.removeEventListener('mouseout', this.exitHandler);
+            }
+        }
+        async showForm(form) {
+            // Check if already shown in this session
+            if (!this.shouldShowForm(form))
+                return;
+            // Mark as shown
+            this.shownForms.add(form._id);
+            this.saveShownForms();
+            sessionStorage.setItem(`clianta_form_${form._id}_shown`, 'true');
+            // Track view
+            await this.trackFormView(form._id);
+            // Render form
+            this.renderForm(form);
+        }
+        async trackFormView(formId) {
+            if (!this.tracker)
+                return;
+            const config = this.tracker.getConfig();
+            const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+            try {
+                await fetch(`${apiEndpoint}/api/public/lead-forms/${formId}/view`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            catch (e) {
+                // Ignore tracking errors
+            }
+        }
+        renderForm(form) {
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.id = `clianta-form-overlay-${form._id}`;
+            overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+            // Create form container
+            const container = document.createElement('div');
+            container.id = `clianta-form-${form._id}`;
+            const style = form.style || {};
+            container.style.cssText = `
+            background: ${style.backgroundColor || '#FFFFFF'};
+            border-radius: ${style.borderRadius || 12}px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s ease;
+        `;
+            // Build form HTML
+            container.innerHTML = this.buildFormHTML(form);
+            overlay.appendChild(container);
+            document.body.appendChild(overlay);
+            // Animate in
+            requestAnimationFrame(() => {
+                overlay.style.opacity = '1';
+                container.style.transform = 'translateY(0)';
+                container.style.opacity = '1';
+            });
+            // Setup event listeners
+            this.setupFormEvents(form, overlay, container);
+        }
+        buildFormHTML(form) {
+            const style = form.style || {};
+            const primaryColor = style.primaryColor || '#10B981';
+            const textColor = style.textColor || '#18181B';
+            let fieldsHTML = form.fields.map(field => {
+                const requiredMark = field.required ? '<span style="color: #EF4444;">*</span>' : '';
+                if (field.type === 'textarea') {
+                    return `
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
+                            ${field.label} ${requiredMark}
+                        </label>
+                        <textarea
+                            name="${field.name}"
+                            placeholder="${field.placeholder || ''}"
+                            ${field.required ? 'required' : ''}
+                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px;"
+                        ></textarea>
+                    </div>
+                `;
+                }
+                else if (field.type === 'checkbox') {
+                    return `
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: ${textColor}; cursor: pointer;">
+                            <input
+                                type="checkbox"
+                                name="${field.name}"
+                                ${field.required ? 'required' : ''}
+                                style="width: 16px; height: 16px;"
+                            />
+                            ${field.label} ${requiredMark}
+                        </label>
+                    </div>
+                `;
+                }
+                else {
+                    return `
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
+                            ${field.label} ${requiredMark}
+                        </label>
+                        <input
+                            type="${field.type}"
+                            name="${field.name}"
+                            placeholder="${field.placeholder || ''}"
+                            ${field.required ? 'required' : ''}
+                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                    </div>
+                `;
+                }
+            }).join('');
+            return `
+            <button id="clianta-form-close" style="
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                background: none;
+                border: none;
+                font-size: 20px;
+                cursor: pointer;
+                color: #71717A;
+                padding: 4px;
+            ">&times;</button>
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; color: ${textColor};">
+                ${form.headline || 'Stay in touch'}
+            </h2>
+            <p style="font-size: 14px; color: #71717A; margin-bottom: 16px;">
+                ${form.subheadline || 'Get the latest updates'}
+            </p>
+            <form id="clianta-form-element">
+                ${fieldsHTML}
+                <button type="submit" style="
+                    width: 100%;
+                    padding: 10px 16px;
+                    background: ${primaryColor};
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    margin-top: 8px;
+                ">
+                    ${form.submitButtonText || 'Subscribe'}
+                </button>
+            </form>
+        `;
+        }
+        setupFormEvents(form, overlay, container) {
+            // Close button
+            const closeBtn = container.querySelector('#clianta-form-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => this.closeForm(form._id, overlay, container));
+            }
+            // Overlay click
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    this.closeForm(form._id, overlay, container);
+                }
+            });
+            // Form submit
+            const formElement = container.querySelector('#clianta-form-element');
+            if (formElement) {
+                formElement.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await this.handleSubmit(form, formElement, container);
+                });
+            }
+        }
+        closeForm(formId, overlay, container) {
+            container.style.transform = 'translateY(20px)';
+            container.style.opacity = '0';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+            }, 300);
+        }
+        async handleSubmit(form, formElement, container) {
+            if (!this.tracker)
+                return;
+            const config = this.tracker.getConfig();
+            const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+            const visitorId = this.tracker.getVisitorId();
+            // Collect form data
+            const formData = new FormData(formElement);
+            const data = {};
+            formData.forEach((value, key) => {
+                data[key] = value;
+            });
+            // Disable submit button
+            const submitBtn = formElement.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = 'Submitting...';
+            }
+            try {
+                const response = await fetch(`${apiEndpoint}/api/public/lead-forms/${form._id}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        visitorId,
+                        data,
+                        url: window.location.href,
+                    }),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    // Show success message
+                    container.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </div>
+                        <p style="font-size: 16px; font-weight: 500; color: #18181B;">
+                            ${form.successMessage || 'Thank you!'}
+                        </p>
+                    </div>
+                `;
+                    // Track identify
+                    if (data.email) {
+                        this.tracker?.identify(data.email, data);
+                    }
+                    // Redirect if configured
+                    if (form.redirectUrl) {
+                        setTimeout(() => {
+                            window.location.href = form.redirectUrl;
+                        }, 1500);
+                    }
+                    // Close after delay
+                    setTimeout(() => {
+                        const overlay = document.getElementById(`clianta-form-overlay-${form._id}`);
+                        if (overlay) {
+                            this.closeForm(form._id, overlay, container);
+                        }
+                    }, 2000);
+                }
+            }
+            catch (error) {
+                console.error('[Clianta] Form submit error:', error);
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = form.submitButtonText || 'Subscribe';
+                }
+            }
+        }
+    }
+
+    /**
+     * Clianta SDK - Plugins Index
+     * Version is defined in core/config.ts as SDK_VERSION
      */
     /**
      * Get plugin instance by name
@@ -1392,17 +1807,256 @@
                 return new ErrorsPlugin();
             case 'performance':
                 return new PerformancePlugin();
+            case 'popupForms':
+                return new PopupFormsPlugin();
             default:
                 throw new Error(`Unknown plugin: ${name}`);
         }
     }
 
     /**
-     * MorrisB Tracking SDK - Main Tracker Class
-     * @version 3.0.0
+     * Clianta SDK - Consent Storage
+     * Handles persistence of consent state
+     * @see SDK_VERSION in core/config.ts
+     */
+    const CONSENT_VERSION = 1;
+    /**
+     * Save consent state to storage
+     */
+    function saveConsent(state) {
+        try {
+            if (typeof localStorage === 'undefined')
+                return false;
+            const stored = {
+                state,
+                timestamp: Date.now(),
+                version: CONSENT_VERSION,
+            };
+            localStorage.setItem(STORAGE_KEYS.CONSENT, JSON.stringify(stored));
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    /**
+     * Load consent state from storage
+     */
+    function loadConsent() {
+        try {
+            if (typeof localStorage === 'undefined')
+                return null;
+            const stored = localStorage.getItem(STORAGE_KEYS.CONSENT);
+            if (!stored)
+                return null;
+            const parsed = JSON.parse(stored);
+            // Validate version
+            if (parsed.version !== CONSENT_VERSION) {
+                clearConsent();
+                return null;
+            }
+            return parsed;
+        }
+        catch {
+            return null;
+        }
+    }
+    /**
+     * Clear consent state from storage
+     */
+    function clearConsent() {
+        try {
+            if (typeof localStorage === 'undefined')
+                return false;
+            localStorage.removeItem(STORAGE_KEYS.CONSENT);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    /**
+     * Check if consent has been explicitly set
+     */
+    function hasStoredConsent() {
+        return loadConsent() !== null;
+    }
+
+    /**
+     * Clianta SDK - Consent Manager
+     * Manages consent state and event buffering for GDPR/CCPA compliance
+     * @see SDK_VERSION in core/config.ts
      */
     /**
-     * Main MorrisB Tracker Class
+     * Manages user consent state for tracking
+     */
+    class ConsentManager {
+        constructor(config = {}) {
+            this.eventBuffer = [];
+            this.callbacks = [];
+            this.hasExplicitConsent = false;
+            this.config = {
+                defaultConsent: { analytics: true, marketing: false, personalization: false },
+                waitForConsent: false,
+                storageKey: 'mb_consent',
+                ...config,
+            };
+            // Load stored consent or use default
+            const stored = loadConsent();
+            if (stored) {
+                this.state = stored.state;
+                this.hasExplicitConsent = true;
+                logger.debug('Loaded stored consent:', this.state);
+            }
+            else {
+                this.state = this.config.defaultConsent || { analytics: true };
+                this.hasExplicitConsent = false;
+                logger.debug('Using default consent:', this.state);
+            }
+            // Register callback if provided
+            if (config.onConsentChange) {
+                this.callbacks.push(config.onConsentChange);
+            }
+        }
+        /**
+         * Grant consent for specified categories
+         */
+        grant(categories) {
+            const previous = { ...this.state };
+            this.state = { ...this.state, ...categories };
+            this.hasExplicitConsent = true;
+            saveConsent(this.state);
+            logger.info('Consent granted:', categories);
+            this.notifyChange(previous);
+        }
+        /**
+         * Revoke consent for specified categories
+         */
+        revoke(categories) {
+            const previous = { ...this.state };
+            for (const category of categories) {
+                this.state[category] = false;
+            }
+            this.hasExplicitConsent = true;
+            saveConsent(this.state);
+            logger.info('Consent revoked:', categories);
+            this.notifyChange(previous);
+        }
+        /**
+         * Update entire consent state
+         */
+        update(state) {
+            const previous = { ...this.state };
+            this.state = { ...state };
+            this.hasExplicitConsent = true;
+            saveConsent(this.state);
+            logger.info('Consent updated:', this.state);
+            this.notifyChange(previous);
+        }
+        /**
+         * Reset consent to default (clear stored consent)
+         */
+        reset() {
+            const previous = { ...this.state };
+            this.state = this.config.defaultConsent || { analytics: true };
+            this.hasExplicitConsent = false;
+            this.eventBuffer = [];
+            clearConsent();
+            logger.info('Consent reset to defaults');
+            this.notifyChange(previous);
+        }
+        /**
+         * Get current consent state
+         */
+        getState() {
+            return { ...this.state };
+        }
+        /**
+         * Check if a specific consent category is granted
+         */
+        hasConsent(category) {
+            return this.state[category] === true;
+        }
+        /**
+         * Check if analytics consent is granted (most common check)
+         */
+        canTrack() {
+            // If waiting for consent and no explicit consent given, cannot track
+            if (this.config.waitForConsent && !this.hasExplicitConsent) {
+                return false;
+            }
+            return this.state.analytics === true;
+        }
+        /**
+         * Check if explicit consent has been given
+         */
+        hasExplicit() {
+            return this.hasExplicitConsent;
+        }
+        /**
+         * Check if there's stored consent
+         */
+        hasStored() {
+            return hasStoredConsent();
+        }
+        /**
+         * Buffer an event (for waitForConsent mode)
+         */
+        bufferEvent(event) {
+            this.eventBuffer.push(event);
+            logger.debug('Event buffered (waiting for consent):', event.eventName);
+        }
+        /**
+         * Get and clear buffered events
+         */
+        flushBuffer() {
+            const events = [...this.eventBuffer];
+            this.eventBuffer = [];
+            if (events.length > 0) {
+                logger.debug(`Flushing ${events.length} buffered events`);
+            }
+            return events;
+        }
+        /**
+         * Get buffered event count
+         */
+        getBufferSize() {
+            return this.eventBuffer.length;
+        }
+        /**
+         * Register a consent change callback
+         */
+        onChange(callback) {
+            this.callbacks.push(callback);
+            // Return unsubscribe function
+            return () => {
+                const index = this.callbacks.indexOf(callback);
+                if (index > -1) {
+                    this.callbacks.splice(index, 1);
+                }
+            };
+        }
+        /**
+         * Notify all callbacks of consent change
+         */
+        notifyChange(previous) {
+            for (const callback of this.callbacks) {
+                try {
+                    callback(this.state, previous);
+                }
+                catch (error) {
+                    logger.error('Consent change callback error:', error);
+                }
+            }
+        }
+    }
+
+    /**
+     * Clianta SDK - Main Tracker Class
+     * @see SDK_VERSION in core/config.ts
+     */
+    /**
+     * Main Clianta Tracker Class
      */
     class Tracker {
         constructor(workspaceId, userConfig = {}) {
@@ -1416,20 +2070,80 @@
             // Setup debug mode
             logger.enabled = this.config.debug;
             logger.info(`Initializing SDK v${SDK_VERSION}`, { workspaceId });
+            // Initialize consent manager
+            this.consentManager = new ConsentManager({
+                ...this.config.consent,
+                onConsentChange: (state, previous) => {
+                    this.onConsentChange(state, previous);
+                },
+            });
             // Initialize transport and queue
             this.transport = new Transport({ apiEndpoint: this.config.apiEndpoint });
             this.queue = new EventQueue(this.transport, {
                 batchSize: this.config.batchSize,
                 flushInterval: this.config.flushInterval,
             });
-            // Get or create visitor and session IDs
-            this.visitorId = getOrCreateVisitorId(this.config.useCookies);
-            this.sessionId = getOrCreateSessionId(this.config.sessionTimeout);
+            // Get or create visitor and session IDs based on mode
+            this.visitorId = this.createVisitorId();
+            this.sessionId = this.createSessionId();
             logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
             // Initialize plugins
             this.initPlugins();
             this.isInitialized = true;
             logger.info('SDK initialized successfully');
+        }
+        /**
+         * Create visitor ID based on storage mode
+         */
+        createVisitorId() {
+            // Anonymous mode: use temporary ID until consent
+            if (this.config.consent.anonymousMode && !this.consentManager.hasExplicit()) {
+                const key = STORAGE_KEYS.VISITOR_ID + '_anon';
+                let anonId = getSessionStorage(key);
+                if (!anonId) {
+                    anonId = 'anon_' + generateUUID();
+                    setSessionStorage(key, anonId);
+                }
+                return anonId;
+            }
+            // Cookie-less mode: use sessionStorage only
+            if (this.config.cookielessMode) {
+                let visitorId = getSessionStorage(STORAGE_KEYS.VISITOR_ID);
+                if (!visitorId) {
+                    visitorId = generateUUID();
+                    setSessionStorage(STORAGE_KEYS.VISITOR_ID, visitorId);
+                }
+                return visitorId;
+            }
+            // Normal mode
+            return getOrCreateVisitorId(this.config.useCookies);
+        }
+        /**
+         * Create session ID
+         */
+        createSessionId() {
+            return getOrCreateSessionId(this.config.sessionTimeout);
+        }
+        /**
+         * Handle consent state changes
+         */
+        onConsentChange(state, previous) {
+            logger.debug('Consent changed:', { from: previous, to: state });
+            // If analytics consent was just granted
+            if (state.analytics && !previous.analytics) {
+                // Upgrade from anonymous ID to persistent ID
+                if (this.config.consent.anonymousMode) {
+                    this.visitorId = getOrCreateVisitorId(this.config.useCookies);
+                    logger.info('Upgraded from anonymous to persistent visitor ID');
+                }
+                // Flush buffered events
+                const buffered = this.consentManager.flushBuffer();
+                for (const event of buffered) {
+                    // Update event with new visitor ID
+                    event.visitorId = this.visitorId;
+                    this.queue.push(event);
+                }
+            }
         }
         /**
          * Initialize enabled plugins
@@ -1474,6 +2188,17 @@
                 timestamp: new Date().toISOString(),
                 sdkVersion: SDK_VERSION,
             };
+            // Check consent before tracking
+            if (!this.consentManager.canTrack()) {
+                // Buffer event for later if waitForConsent is enabled
+                if (this.config.consent.waitForConsent) {
+                    this.consentManager.bufferEvent(event);
+                    return;
+                }
+                // Otherwise drop the event
+                logger.debug('Event dropped (no consent):', eventName);
+                return;
+            }
             this.queue.push(event);
             logger.debug('Event tracked:', eventName, properties);
         }
@@ -1513,11 +2238,13 @@
          * Update consent state
          */
         consent(state) {
-            logger.info('Consent updated:', state);
-            // TODO: Implement consent management
-            // - Store consent state
-            // - Enable/disable tracking based on consent
-            // - Notify plugins
+            this.consentManager.update(state);
+        }
+        /**
+         * Get current consent state
+         */
+        getConsentState() {
+            return this.consentManager.getState();
         }
         /**
          * Toggle debug mode
@@ -1562,9 +2289,48 @@
         reset() {
             logger.info('Resetting visitor data');
             resetIds(this.config.useCookies);
-            this.visitorId = getOrCreateVisitorId(this.config.useCookies);
-            this.sessionId = getOrCreateSessionId(this.config.sessionTimeout);
+            this.visitorId = this.createVisitorId();
+            this.sessionId = this.createSessionId();
             this.queue.clear();
+        }
+        /**
+         * Delete all stored user data (GDPR right-to-erasure)
+         */
+        deleteData() {
+            logger.info('Deleting all user data (GDPR request)');
+            // Clear queue
+            this.queue.clear();
+            // Reset consent
+            this.consentManager.reset();
+            // Clear all stored IDs
+            resetIds(this.config.useCookies);
+            // Clear session storage items
+            if (typeof sessionStorage !== 'undefined') {
+                try {
+                    sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                    sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID + '_anon');
+                    sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+                    sessionStorage.removeItem(STORAGE_KEYS.SESSION_TIMESTAMP);
+                }
+                catch {
+                    // Ignore errors
+                }
+            }
+            // Clear localStorage items
+            if (typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                    localStorage.removeItem(STORAGE_KEYS.CONSENT);
+                    localStorage.removeItem(STORAGE_KEYS.EVENT_QUEUE);
+                }
+                catch {
+                    // Ignore errors
+                }
+            }
+            // Generate new IDs
+            this.visitorId = this.createVisitorId();
+            this.sessionId = this.createSessionId();
+            logger.info('All user data deleted');
         }
         /**
          * Destroy tracker and cleanup
@@ -1588,7 +2354,7 @@
 
     /**
      * Clianta SDK - CRM API Client
-     * @version 1.0.0
+     * @see SDK_VERSION in core/config.ts
      */
     /**
      * CRM API Client for managing contacts and opportunities
@@ -1762,7 +2528,7 @@
     /**
      * Clianta SDK
      * Professional CRM and tracking SDK for lead generation
-     * @version 1.0.0
+     * @see SDK_VERSION in core/config.ts
      */
     // Global instance cache
     let globalInstance = null;
@@ -1778,6 +2544,16 @@
      * const tracker = clianta('your-workspace-id', {
      *   debug: true,
      *   plugins: ['pageView', 'forms', 'scroll'],
+     * });
+     *
+     * @example
+     * // With consent configuration
+     * const tracker = clianta('your-workspace-id', {
+     *   consent: {
+     *     waitForConsent: true,
+     *     anonymousMode: true,
+     *   },
+     *   cookielessMode: true, // GDPR-friendly mode
      * });
      */
     function clianta(workspaceId, config) {
@@ -1800,10 +2576,12 @@
             clianta,
             Tracker,
             CRMClient,
+            ConsentManager,
         };
     }
 
     exports.CRMClient = CRMClient;
+    exports.ConsentManager = ConsentManager;
     exports.SDK_VERSION = SDK_VERSION;
     exports.Tracker = Tracker;
     exports.clianta = clianta;

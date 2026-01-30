@@ -1,8 +1,8 @@
 /**
  * Clianta SDK - Type Definitions
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
-interface MorrisBConfig {
+interface CliantaConfig {
     /** Backend API endpoint URL */
     apiEndpoint?: string;
     /** Enable debug mode with verbose logging */
@@ -23,8 +23,10 @@ interface MorrisBConfig {
     cookieDomain?: string;
     /** Use cookies instead of localStorage for visitor ID */
     useCookies?: boolean;
+    /** Cookie-less mode: use sessionStorage only (no persistent storage) */
+    cookielessMode?: boolean;
 }
-type PluginName = 'pageView' | 'forms' | 'scroll' | 'clicks' | 'engagement' | 'downloads' | 'exitIntent' | 'errors' | 'performance';
+type PluginName = 'pageView' | 'forms' | 'scroll' | 'clicks' | 'engagement' | 'downloads' | 'exitIntent' | 'errors' | 'performance' | 'popupForms';
 interface ConsentConfig {
     /** Default consent state before user action */
     defaultConsent?: ConsentState;
@@ -32,6 +34,8 @@ interface ConsentConfig {
     waitForConsent?: boolean;
     /** Storage key for consent state */
     storageKey?: string;
+    /** Anonymous mode: track without visitor ID until explicit consent */
+    anonymousMode?: boolean;
 }
 interface ConsentState {
     /** Consent for analytics/essential tracking */
@@ -117,9 +121,13 @@ interface TrackerCore {
     /** Reset visitor (for logout) */
     reset(): void;
     /** Get current configuration */
-    getConfig(): MorrisBConfig;
+    getConfig(): CliantaConfig;
     /** Get workspace ID */
     getWorkspaceId(): string;
+    /** Delete all stored user data (GDPR right-to-erasure) */
+    deleteData(): void;
+    /** Get current consent state */
+    getConsentState(): ConsentState;
 }
 interface Contact {
     _id?: string;
@@ -171,12 +179,12 @@ interface PaginatedResponse<T> {
 }
 
 /**
- * MorrisB Tracking SDK - Main Tracker Class
- * @version 3.0.0
+ * Clianta SDK - Main Tracker Class
+ * @see SDK_VERSION in core/config.ts
  */
 
 /**
- * Main MorrisB Tracker Class
+ * Main Clianta Tracker Class
  */
 declare class Tracker implements TrackerCore {
     private workspaceId;
@@ -187,7 +195,20 @@ declare class Tracker implements TrackerCore {
     private visitorId;
     private sessionId;
     private isInitialized;
-    constructor(workspaceId: string, userConfig?: MorrisBConfig);
+    private consentManager;
+    constructor(workspaceId: string, userConfig?: CliantaConfig);
+    /**
+     * Create visitor ID based on storage mode
+     */
+    private createVisitorId;
+    /**
+     * Create session ID
+     */
+    private createSessionId;
+    /**
+     * Handle consent state changes
+     */
+    private onConsentChange;
     /**
      * Initialize enabled plugins
      */
@@ -209,6 +230,10 @@ declare class Tracker implements TrackerCore {
      */
     consent(state: ConsentState): void;
     /**
+     * Get current consent state
+     */
+    getConsentState(): ConsentState;
+    /**
      * Toggle debug mode
      */
     debug(enabled: boolean): void;
@@ -227,7 +252,7 @@ declare class Tracker implements TrackerCore {
     /**
      * Get current configuration
      */
-    getConfig(): MorrisBConfig;
+    getConfig(): CliantaConfig;
     /**
      * Force flush event queue
      */
@@ -237,6 +262,10 @@ declare class Tracker implements TrackerCore {
      */
     reset(): void;
     /**
+     * Delete all stored user data (GDPR right-to-erasure)
+     */
+    deleteData(): void;
+    /**
      * Destroy tracker and cleanup
      */
     destroy(): void;
@@ -244,7 +273,7 @@ declare class Tracker implements TrackerCore {
 
 /**
  * Clianta SDK - CRM API Client
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 /**
@@ -320,17 +349,107 @@ declare class CRMClient {
 }
 
 /**
+ * Clianta SDK - Consent Manager
+ * Manages consent state and event buffering for GDPR/CCPA compliance
+ * @see SDK_VERSION in core/config.ts
+ */
+
+type ConsentChangeCallback = (state: ConsentState, previous: ConsentState) => void;
+interface ConsentManagerConfig extends ConsentConfig {
+    onConsentChange?: ConsentChangeCallback;
+}
+/**
+ * Manages user consent state for tracking
+ */
+declare class ConsentManager {
+    private state;
+    private config;
+    private eventBuffer;
+    private callbacks;
+    private hasExplicitConsent;
+    constructor(config?: ConsentManagerConfig);
+    /**
+     * Grant consent for specified categories
+     */
+    grant(categories: Partial<ConsentState>): void;
+    /**
+     * Revoke consent for specified categories
+     */
+    revoke(categories: (keyof ConsentState)[]): void;
+    /**
+     * Update entire consent state
+     */
+    update(state: ConsentState): void;
+    /**
+     * Reset consent to default (clear stored consent)
+     */
+    reset(): void;
+    /**
+     * Get current consent state
+     */
+    getState(): ConsentState;
+    /**
+     * Check if a specific consent category is granted
+     */
+    hasConsent(category: keyof ConsentState): boolean;
+    /**
+     * Check if analytics consent is granted (most common check)
+     */
+    canTrack(): boolean;
+    /**
+     * Check if explicit consent has been given
+     */
+    hasExplicit(): boolean;
+    /**
+     * Check if there's stored consent
+     */
+    hasStored(): boolean;
+    /**
+     * Buffer an event (for waitForConsent mode)
+     */
+    bufferEvent(event: TrackingEvent): void;
+    /**
+     * Get and clear buffered events
+     */
+    flushBuffer(): TrackingEvent[];
+    /**
+     * Get buffered event count
+     */
+    getBufferSize(): number;
+    /**
+     * Register a consent change callback
+     */
+    onChange(callback: ConsentChangeCallback): () => void;
+    /**
+     * Notify all callbacks of consent change
+     */
+    private notifyChange;
+}
+
+/**
+ * Clianta SDK - Consent Storage
+ * Handles persistence of consent state
+ * @see SDK_VERSION in core/config.ts
+ */
+
+interface StoredConsent {
+    state: ConsentState;
+    timestamp: number;
+    version: number;
+}
+
+/**
  * Clianta SDK - Configuration
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 /** SDK Version */
-declare const SDK_VERSION = "1.0.0";
+declare const SDK_VERSION = "1.1.0";
 
 /**
  * Clianta SDK
  * Professional CRM and tracking SDK for lead generation
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 /**
@@ -346,8 +465,18 @@ declare const SDK_VERSION = "1.0.0";
  *   debug: true,
  *   plugins: ['pageView', 'forms', 'scroll'],
  * });
+ *
+ * @example
+ * // With consent configuration
+ * const tracker = clianta('your-workspace-id', {
+ *   consent: {
+ *     waitForConsent: true,
+ *     anonymousMode: true,
+ *   },
+ *   cookielessMode: true, // GDPR-friendly mode
+ * });
  */
-declare function clianta(workspaceId: string, config?: MorrisBConfig): TrackerCore;
+declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
-export { CRMClient, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { ApiResponse, ConsentConfig, ConsentState, Contact, EventType, MorrisBConfig, Opportunity, PaginatedResponse, Plugin, PluginName, TrackerCore, TrackingEvent, UserTraits };
+export { CRMClient, ConsentManager, SDK_VERSION, Tracker, clianta, clianta as default };
+export type { ApiResponse, CliantaConfig, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, EventType, Opportunity, PaginatedResponse, Plugin, PluginName, StoredConsent, TrackerCore, TrackingEvent, UserTraits };

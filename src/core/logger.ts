@@ -1,6 +1,6 @@
 /**
- * MorrisB Tracking SDK - Debug Logger
- * @version 3.0.0
+ * Clianta SDK - Debug Logger
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { Logger, LogLevel } from '../types';

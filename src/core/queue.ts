@@ -1,7 +1,7 @@
 /**
- * MorrisB Tracking SDK - Event Queue
+ * Clianta SDK - Event Queue
  * Handles batching and flushing of events
- * @version 3.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { QueueConfig, TrackingEvent } from '../types';

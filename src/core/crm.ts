@@ -1,6 +1,6 @@
 /**
  * Clianta SDK - CRM API Client
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type { Contact, Opportunity, ApiResponse, PaginatedResponse } from '../types';

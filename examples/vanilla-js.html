@@ -4,215 +4,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clianta SDK - Vanilla JavaScript Example</title>
+    <title>Clianta SDK - HTML Integration Guide</title>
+
+    <!-- ============================================
+         OPTION 1: Simple Integration (Recommended)
+         ============================================ -->
+    <script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
+    <script>
+        // Initialize tracker with basic config
+        var tracker = clianta('YOUR_WORKSPACE_ID', {
+            apiEndpoint: 'https://api.clianta.online',
+            debug: false
+        });
+    </script>
+
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            line-height: 1.6;
-        }
-
-        h1 {
-            color: #333;
+            margin: 0 auto;
+            padding: 2rem;
         }
 
         .section {
             background: #f5f5f5;
-            padding: 20px;
-            margin: 20px 0;
+            padding: 1.5rem;
             border-radius: 8px;
+            margin: 1rem 0;
         }
 
         button {
             background: #0066cc;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
             cursor: pointer;
-            margin: 5px;
+            margin: 0.5rem 0;
         }
 
         button:hover {
             background: #0052a3;
         }
 
-        .output {
-            background: #fff;
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin-top: 10px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
+        button.secondary {
+            background: #666;
         }
 
-        input {
-            padding: 8px;
-            margin: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        code {
+            background: #eee;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .cookie-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 2px solid #ddd;
+            padding: 1rem;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        .cookie-banner.show {
+            display: block;
+        }
+
+        .cookie-banner-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
         }
     </style>
 </head>
 
 <body>
-    <h1>Clianta SDK - Vanilla JavaScript Example</h1>
+    <h1>Clianta SDK - HTML Examples</h1>
 
+    <!-- Basic Tracking -->
     <div class="section">
-        <h2>1. SDK Initialization</h2>
-        <p>The SDK is automatically initialized on page load.</p>
-        <button onclick="showVisitorInfo()">Show Visitor Info</button>
-        <button onclick="toggleDebug()">Toggle Debug Mode</button>
-        <div id="visitor-info" class="output" style="display:none;"></div>
+        <h2>1. Automatic Tracking</h2>
+        <p>The SDK automatically tracks:</p>
+        <ul>
+            <li>Page views (every page load)</li>
+            <li>Form submissions (auto-detected)</li>
+            <li>Scroll depth (25%, 50%, 75%, 100%)</li>
+            <li>Button clicks</li>
+            <li>User engagement (time on page)</li>
+            <li>File downloads</li>
+            <li>Exit intent</li>
+        </ul>
     </div>
 
+    <!-- Custom Events -->
     <div class="section">
         <h2>2. Track Custom Events</h2>
         <button onclick="trackButtonClick()">Track Button Click</button>
-        <button onclick="trackCustomEvent()">Track Custom Event</button>
-        <div id="event-output" class="output" style="display:none;"></div>
+        <button onclick="trackAddToCart()">Track Add to Cart</button>
+
+        <script>
+            function trackButtonClick() {
+                tracker.track('button_click', 'Demo Button', {
+                    location: 'example-section',
+                    timestamp: new Date().toISOString()
+                });
+                alert('Event tracked! Check your dashboard.');
+            }
+
+            function trackAddToCart() {
+                tracker.track('custom', 'Add to Cart', {
+                    productId: 'SKU-12345',
+                    productName: 'Example Product',
+                    price: 29.99,
+                    currency: 'USD'
+                });
+                alert('Add to Cart tracked!');
+            }
+        </script>
     </div>
 
+    <!-- Identify Users -->
     <div class="section">
-        <h2>3. Identify Visitor</h2>
-        <input type="email" id="email" placeholder="Email">
-        <input type="text" id="firstName" placeholder="First Name">
-        <input type="text" id="lastName" placeholder="Last Name">
-        <button onclick="identifyUser()">Identify</button>
-        <div id="identify-output" class="output" style="display:none;"></div>
+        <h2>3. Identify Users</h2>
+        <form id="identifyForm" onsubmit="identifyUser(event)">
+            <input type="email" id="userEmail" placeholder="Email address" required
+                style="padding: 0.5rem; margin-right: 0.5rem; width: 250px;">
+            <input type="text" id="userName" placeholder="First Name"
+                style="padding: 0.5rem; margin-right: 0.5rem; width: 150px;">
+            <button type="submit">Identify</button>
+        </form>
+
+        <script>
+            function identifyUser(e) {
+                e.preventDefault();
+                var email = document.getElementById('userEmail').value;
+                var firstName = document.getElementById('userName').value;
+
+                tracker.identify(email, {
+                    firstName: firstName,
+                    source: 'demo-page'
+                });
+
+                alert('User identified: ' + email);
+            }
+        </script>
     </div>
 
+    <!-- GDPR Consent -->
     <div class="section">
-        <h2>4. CRM API Example</h2>
-        <input type="text" id="authToken" placeholder="Auth Token (optional)">
-        <button onclick="testCRMAPI()">Test CRM API</button>
-        <div id="crm-output" class="output" style="display:none;"></div>
+        <h2>4. GDPR Consent Management</h2>
+        <p>Use these methods for cookie consent:</p>
+        <button onclick="grantConsent()">Accept Cookies</button>
+        <button onclick="revokeConsent()" class="secondary">Revoke Consent</button>
+        <button onclick="deleteUserData()" class="secondary">Delete My Data</button>
+
+        <script>
+            function grantConsent() {
+                tracker.consent({
+                    analytics: true,
+                    marketing: true,
+                    personalization: true
+                });
+                alert('Consent granted!');
+                hideCookieBanner();
+            }
+
+            function revokeConsent() {
+                tracker.consent({
+                    analytics: false,
+                    marketing: false,
+                    personalization: false
+                });
+                alert('Consent revoked. Analytics disabled.');
+            }
+
+            function deleteUserData() {
+                tracker.deleteData();
+                alert('All your data has been deleted.');
+            }
+        </script>
     </div>
 
-    <!-- Load Clianta SDK from local build -->
-    <script src="../dist/clianta.umd.min.js"></script>
+    <!-- Debug Mode -->
+    <div class="section">
+        <h2>5. Debug Mode</h2>
+        <button onclick="enableDebug()">Enable Debug</button>
+        <button onclick="disableDebug()" class="secondary">Disable Debug</button>
+        <p><small>Check browser console for debug logs</small></p>
+
+        <script>
+            function enableDebug() {
+                tracker.debug(true);
+                alert('Debug mode enabled. Check console.');
+            }
+
+            function disableDebug() {
+                tracker.debug(false);
+                alert('Debug mode disabled.');
+            }
+        </script>
+    </div>
+
+    <!-- Get IDs -->
+    <div class="section">
+        <h2>6. Get Visitor Info</h2>
+        <button onclick="showVisitorInfo()">Show Visitor Info</button>
+
+        <script>
+            function showVisitorInfo() {
+                var visitorId = tracker.getVisitorId();
+                var sessionId = tracker.getSessionId();
+                var consent = tracker.getConsentState();
+
+                alert(
+                    'Visitor ID: ' + visitorId + '\n' +
+                    'Session ID: ' + sessionId + '\n' +
+                    'Consent: ' + JSON.stringify(consent)
+                );
+            }
+        </script>
+    </div>
+
+    <!-- Cookie Consent Banner Example -->
+    <div id="cookieBanner" class="cookie-banner">
+        <div class="cookie-banner-content">
+            <p>We use cookies to improve your experience. <a href="#" onclick="showCookieSettings()">Manage
+                    preferences</a></p>
+            <div>
+                <button onclick="acceptEssentialOnly()" class="secondary">Essential Only</button>
+                <button onclick="grantConsent()">Accept All</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // Initialize tracker
-        const tracker = Clianta.clianta('demo-workspace-id', {
-            apiEndpoint: 'http://localhost:5000',
-            debug: true,
-            autoPageView: true
-        });
-
-        console.log('[Clianta] SDK initialized:', tracker);
-
-        // Show visitor info
-        function showVisitorInfo() {
-            const info = {
-                visitorId: tracker.getVisitorId(),
-                sessionId: tracker.getSessionId(),
-                config: tracker.getConfig()
-            };
-
-            const output = document.getElementById('visitor-info');
-            output.style.display = 'block';
-            output.textContent = JSON.stringify(info, null, 2);
+        // Show cookie banner on first visit
+        if (!localStorage.getItem('clianta_consent_given')) {
+            document.getElementById('cookieBanner').classList.add('show');
         }
 
-        // Toggle debug mode
-        let debugEnabled = true;
-        function toggleDebug() {
-            debugEnabled = !debugEnabled;
-            tracker.debug(debugEnabled);
-            alert(`Debug mode ${debugEnabled ? 'enabled' : 'disabled'}`);
+        function hideCookieBanner() {
+            document.getElementById('cookieBanner').classList.remove('show');
+            localStorage.setItem('clianta_consent_given', 'true');
         }
 
-        // Track button click
-        function trackButtonClick() {
-            tracker.track('button_click', 'Demo Button Clicked', {
-                buttonId: 'demo-button',
-                location: 'example-page',
-                timestamp: new Date().toISOString()
+        function acceptEssentialOnly() {
+            tracker.consent({
+                analytics: false,
+                marketing: false,
+                personalization: false
             });
-
-            const output = document.getElementById('event-output');
-            output.style.display = 'block';
-            output.textContent = 'Button click event tracked! Check console for details.';
+            hideCookieBanner();
         }
 
-        // Track custom event
-        function trackCustomEvent() {
-            tracker.track('custom', 'Custom Event', {
-                category: 'demo',
-                action: 'test',
-                value: 42
-            });
-
-            const output = document.getElementById('event-output');
-            output.style.display = 'block';
-            output.textContent = 'Custom event tracked! Check console for details.';
+        function showCookieSettings() {
+            alert('Cookie settings modal would appear here');
         }
-
-        // Identify user
-        function identifyUser() {
-            const email = document.getElementById('email').value;
-            const firstName = document.getElementById('firstName').value;
-            const lastName = document.getElementById('lastName').value;
-
-            if (!email) {
-                alert('Please enter an email');
-                return;
-            }
-
-            tracker.identify(email, {
-                firstName: firstName || undefined,
-                lastName: lastName || undefined,
-                company: 'Demo Company'
-            });
-
-            const output = document.getElementById('identify-output');
-            output.style.display = 'block';
-            output.textContent = `Visitor identified as: ${email}`;
-        }
-
-        // Test CRM API
-        async function testCRMAPI() {
-            const authToken = document.getElementById('authToken').value;
-            const output = document.getElementById('crm-output');
-            output.style.display = 'block';
-
-            try {
-                // Initialize CRM client
-                const crm = new Clianta.CRMClient(
-                    'http://localhost:5000',
-                    'demo-workspace-id',
-                    authToken || undefined
-                );
-
-                output.textContent = 'Testing CRM API...\n\n';
-
-                // Test getting contacts
-                output.textContent += 'Fetching contacts...\n';
-                const contacts = await crm.getContacts({ page: 1, limit: 5 });
-
-                if (contacts.success) {
-                    output.textContent += `Success! Found ${contacts.data?.pagination?.total || 0} contacts\n`;
-                    output.textContent += JSON.stringify(contacts.data, null, 2);
-                } else {
-                    output.textContent += `Error: ${contacts.error}\n`;
-                    output.textContent += 'Note: You need a valid auth token to use the CRM API';
-                }
-            } catch (error) {
-                output.textContent += `Error: ${error.message}\n`;
-                output.textContent += 'Make sure the backend is running on http://localhost:5000';
-            }
-        }
-
-        // Track page view manually
-        tracker.page('Example Page', {
-            category: 'demo',
-            framework: 'vanilla-js'
-        });
     </script>
+
+    <!-- ============================================
+         ADVANCED: Wait for Consent Mode
+         
+         Initialize tracking that waits for consent:
+         
+         var tracker = clianta('YOUR_WORKSPACE_ID', {
+             apiEndpoint: 'https://api.clianta.online',
+             consent: {
+                 waitForConsent: true,  // Buffer events until consent
+                 anonymousMode: true    // Use anon ID until consent
+             }
+         });
+         
+         // Events are buffered until:
+         tracker.consent({ analytics: true });
+         
+         ============================================ -->
+
+    <!-- ============================================
+         ADVANCED: Cookie-less Mode (GDPR Strict)
+         
+         No persistent cookies or localStorage:
+         
+         var tracker = clianta('YOUR_WORKSPACE_ID', {
+             apiEndpoint: 'https://api.clianta.online',
+             cookielessMode: true  // Session storage only
+         });
+         
+         ============================================ -->
 </body>
 
 </html>

@@ -1,10 +1,10 @@
 /**
- * MorrisB Tracking SDK - Main Tracker Class
- * @version 3.0.0
+ * Clianta SDK - Main Tracker Class
+ * @see SDK_VERSION in core/config.ts
  */
 
 import type {
-    MorrisBConfig,
+    CliantaConfig,
     TrackerCore,
     TrackingEvent,
     EventType,
@@ -12,33 +12,38 @@ import type {
     ConsentState,
     Plugin,
 } from '../types';
-import { mergeConfig, SDK_VERSION } from './config';
+import { mergeConfig, SDK_VERSION, STORAGE_KEYS } from './config';
 import { Transport } from './transport';
 import { EventQueue } from './queue';
 import { logger } from './logger';
 import { getPlugin } from '../plugins';
+import { ConsentManager } from '../consent';
 import {
     getOrCreateVisitorId,
     getOrCreateSessionId,
     resetIds,
     getUTMParams,
     getDeviceInfo,
+    generateUUID,
+    getSessionStorage,
+    setSessionStorage,
 } from '../utils';
 
 /**
- * Main MorrisB Tracker Class
+ * Main Clianta Tracker Class
  */
 export class Tracker implements TrackerCore {
     private workspaceId: string;
-    private config: Required<MorrisBConfig>;
+    private config: Required<CliantaConfig>;
     private transport: Transport;
     private queue: EventQueue;
     private plugins: Plugin[] = [];
     private visitorId: string;
     private sessionId: string;
     private isInitialized = false;
+    private consentManager: ConsentManager;
 
-    constructor(workspaceId: string, userConfig: MorrisBConfig = {}) {
+    constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
         if (!workspaceId) {
             throw new Error('[Clianta] Workspace ID is required');
         }
@@ -50,6 +55,14 @@ export class Tracker implements TrackerCore {
         logger.enabled = this.config.debug;
         logger.info(`Initializing SDK v${SDK_VERSION}`, { workspaceId });
 
+        // Initialize consent manager
+        this.consentManager = new ConsentManager({
+            ...this.config.consent,
+            onConsentChange: (state, previous) => {
+                this.onConsentChange(state, previous);
+            },
+        });
+
         // Initialize transport and queue
         this.transport = new Transport({ apiEndpoint: this.config.apiEndpoint });
         this.queue = new EventQueue(this.transport, {
@@ -57,9 +70,9 @@ export class Tracker implements TrackerCore {
             flushInterval: this.config.flushInterval,
         });
 
-        // Get or create visitor and session IDs
-        this.visitorId = getOrCreateVisitorId(this.config.useCookies);
-        this.sessionId = getOrCreateSessionId(this.config.sessionTimeout);
+        // Get or create visitor and session IDs based on mode
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
 
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
 
@@ -68,6 +81,66 @@ export class Tracker implements TrackerCore {
 
         this.isInitialized = true;
         logger.info('SDK initialized successfully');
+    }
+
+    /**
+     * Create visitor ID based on storage mode
+     */
+    private createVisitorId(): string {
+        // Anonymous mode: use temporary ID until consent
+        if (this.config.consent.anonymousMode && !this.consentManager.hasExplicit()) {
+            const key = STORAGE_KEYS.VISITOR_ID + '_anon';
+            let anonId = getSessionStorage(key);
+            if (!anonId) {
+                anonId = 'anon_' + generateUUID();
+                setSessionStorage(key, anonId);
+            }
+            return anonId;
+        }
+
+        // Cookie-less mode: use sessionStorage only
+        if (this.config.cookielessMode) {
+            let visitorId = getSessionStorage(STORAGE_KEYS.VISITOR_ID);
+            if (!visitorId) {
+                visitorId = generateUUID();
+                setSessionStorage(STORAGE_KEYS.VISITOR_ID, visitorId);
+            }
+            return visitorId;
+        }
+
+        // Normal mode
+        return getOrCreateVisitorId(this.config.useCookies);
+    }
+
+    /**
+     * Create session ID
+     */
+    private createSessionId(): string {
+        return getOrCreateSessionId(this.config.sessionTimeout);
+    }
+
+    /**
+     * Handle consent state changes
+     */
+    private onConsentChange(state: ConsentState, previous: ConsentState): void {
+        logger.debug('Consent changed:', { from: previous, to: state });
+
+        // If analytics consent was just granted
+        if (state.analytics && !previous.analytics) {
+            // Upgrade from anonymous ID to persistent ID
+            if (this.config.consent.anonymousMode) {
+                this.visitorId = getOrCreateVisitorId(this.config.useCookies);
+                logger.info('Upgraded from anonymous to persistent visitor ID');
+            }
+
+            // Flush buffered events
+            const buffered = this.consentManager.flushBuffer();
+            for (const event of buffered) {
+                // Update event with new visitor ID
+                event.visitorId = this.visitorId;
+                this.queue.push(event);
+            }
+        }
     }
 
     /**
@@ -121,6 +194,18 @@ export class Tracker implements TrackerCore {
             sdkVersion: SDK_VERSION,
         };
 
+        // Check consent before tracking
+        if (!this.consentManager.canTrack()) {
+            // Buffer event for later if waitForConsent is enabled
+            if (this.config.consent.waitForConsent) {
+                this.consentManager.bufferEvent(event);
+                return;
+            }
+            // Otherwise drop the event
+            logger.debug('Event dropped (no consent):', eventName);
+            return;
+        }
+
         this.queue.push(event);
         logger.debug('Event tracked:', eventName, properties);
     }
@@ -165,11 +250,14 @@ export class Tracker implements TrackerCore {
      * Update consent state
      */
     consent(state: ConsentState): void {
-        logger.info('Consent updated:', state);
-        // TODO: Implement consent management
-        // - Store consent state
-        // - Enable/disable tracking based on consent
-        // - Notify plugins
+        this.consentManager.update(state);
+    }
+
+    /**
+     * Get current consent state
+     */
+    getConsentState(): ConsentState {
+        return this.consentManager.getState();
     }
 
     /**
@@ -204,7 +292,7 @@ export class Tracker implements TrackerCore {
     /**
      * Get current configuration
      */
-    getConfig(): MorrisBConfig {
+    getConfig(): CliantaConfig {
         return { ...this.config };
     }
 
@@ -221,9 +309,54 @@ export class Tracker implements TrackerCore {
     reset(): void {
         logger.info('Resetting visitor data');
         resetIds(this.config.useCookies);
-        this.visitorId = getOrCreateVisitorId(this.config.useCookies);
-        this.sessionId = getOrCreateSessionId(this.config.sessionTimeout);
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
         this.queue.clear();
+    }
+
+    /**
+     * Delete all stored user data (GDPR right-to-erasure)
+     */
+    deleteData(): void {
+        logger.info('Deleting all user data (GDPR request)');
+
+        // Clear queue
+        this.queue.clear();
+
+        // Reset consent
+        this.consentManager.reset();
+
+        // Clear all stored IDs
+        resetIds(this.config.useCookies);
+
+        // Clear session storage items
+        if (typeof sessionStorage !== 'undefined') {
+            try {
+                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID + '_anon');
+                sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+                sessionStorage.removeItem(STORAGE_KEYS.SESSION_TIMESTAMP);
+            } catch {
+                // Ignore errors
+            }
+        }
+
+        // Clear localStorage items
+        if (typeof localStorage !== 'undefined') {
+            try {
+                localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                localStorage.removeItem(STORAGE_KEYS.CONSENT);
+                localStorage.removeItem(STORAGE_KEYS.EVENT_QUEUE);
+            } catch {
+                // Ignore errors
+            }
+        }
+
+        // Generate new IDs
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
+
+        logger.info('All user data deleted');
     }
 
     /**
@@ -249,3 +382,4 @@ export class Tracker implements TrackerCore {
         this.isInitialized = false;
     }
 }
+

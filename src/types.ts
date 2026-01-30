@@ -1,13 +1,13 @@
 /**
  * Clianta SDK - Type Definitions
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 // ============================================
 // CONFIGURATION TYPES
 // ============================================
 
-export interface MorrisBConfig {
+export interface CliantaConfig {
     /** Backend API endpoint URL */
     apiEndpoint?: string;
 
@@ -37,6 +37,9 @@ export interface MorrisBConfig {
 
     /** Use cookies instead of localStorage for visitor ID */
     useCookies?: boolean;
+
+    /** Cookie-less mode: use sessionStorage only (no persistent storage) */
+    cookielessMode?: boolean;
 }
 
 export type PluginName =
@@ -48,7 +51,8 @@ export type PluginName =
     | 'downloads'
     | 'exitIntent'
     | 'errors'
-    | 'performance';
+    | 'performance'
+    | 'popupForms';
 
 // ============================================
 // CONSENT TYPES
@@ -63,6 +67,9 @@ export interface ConsentConfig {
 
     /** Storage key for consent state */
     storageKey?: string;
+
+    /** Anonymous mode: track without visitor ID until explicit consent */
+    anonymousMode?: boolean;
 }
 
 export interface ConsentState {
@@ -220,10 +227,16 @@ export interface TrackerCore {
     reset(): void;
 
     /** Get current configuration */
-    getConfig(): MorrisBConfig;
+    getConfig(): CliantaConfig;
 
     /** Get workspace ID */
     getWorkspaceId(): string;
+
+    /** Delete all stored user data (GDPR right-to-erasure) */
+    deleteData(): void;
+
+    /** Get current consent state */
+    getConsentState(): ConsentState;
 }
 
 // ============================================

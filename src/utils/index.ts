@@ -1,6 +1,6 @@
 /**
- * MorrisB Tracking SDK - Utility Functions
- * @version 3.0.0
+ * Clianta SDK - Utility Functions
+ * @see SDK_VERSION in core/config.ts
  */
 
 import { STORAGE_KEYS, DOWNLOAD_EXTENSIONS } from '../core/config';

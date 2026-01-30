@@ -1,6 +1,6 @@
 {
     "name": "@clianta/sdk",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "type": "module",
     "description": "Professional CRM SDK for Clianta - Track visitors, manage contacts, opportunities, and analyze behavior",
     "main": "dist/clianta.cjs.js",

@@ -1,12 +1,12 @@
 /**
  * Clianta SDK - Configuration
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
-import type { MorrisBConfig, PluginName } from '../types';
+import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.0.0';
+export const SDK_VERSION = '1.1.0';
 
 /** Default API endpoint based on environment */
 export const getDefaultApiEndpoint = (): string => {
@@ -30,6 +30,7 @@ export const ALL_PLUGINS: PluginName[] = [
     'exitIntent',
     'errors',
     'performance',
+    'popupForms',
 ];
 
 /** Core plugins enabled by default */
@@ -41,10 +42,11 @@ export const DEFAULT_PLUGINS: PluginName[] = [
     'engagement',
     'downloads',
     'exitIntent',
+    'popupForms',
 ];
 
 /** Default configuration values */
-export const DEFAULT_CONFIG: Required<MorrisBConfig> = {
+export const DEFAULT_CONFIG: Required<CliantaConfig> = {
     apiEndpoint: getDefaultApiEndpoint(),
     debug: false,
     autoPageView: true,
@@ -56,9 +58,11 @@ export const DEFAULT_CONFIG: Required<MorrisBConfig> = {
         defaultConsent: { analytics: true, marketing: false, personalization: false },
         waitForConsent: false,
         storageKey: 'mb_consent',
+        anonymousMode: false,
     },
     cookieDomain: '',
     useCookies: false,
+    cookielessMode: false,
 };
 
 /** Storage keys */
@@ -84,7 +88,7 @@ export const DOWNLOAD_EXTENSIONS = [
 /**
  * Merge user config with defaults
  */
-export function mergeConfig(userConfig: MorrisBConfig = {}): Required<MorrisBConfig> {
+export function mergeConfig(userConfig: CliantaConfig = {}): Required<CliantaConfig> {
     return {
         ...DEFAULT_CONFIG,
         ...userConfig,

@@ -1,16 +1,17 @@
 /**
  * Clianta SDK
  * Professional CRM and tracking SDK for lead generation
- * @version 1.0.0
+ * @see SDK_VERSION in core/config.ts
  */
 
 import { Tracker } from './core/tracker';
 import { CRMClient } from './core/crm';
-import type { MorrisBConfig, TrackerCore } from './types';
+import { ConsentManager } from './consent';
+import type { CliantaConfig, TrackerCore } from './types';
 
 // Export types
 export type {
-    MorrisBConfig,
+    CliantaConfig,
     TrackerCore,
     TrackingEvent,
     EventType,
@@ -25,11 +26,14 @@ export type {
     PaginatedResponse,
 } from './types';
 
+// Export consent types
+export type { ConsentChangeCallback, ConsentManagerConfig, StoredConsent } from './consent';
+
 // Export SDK version
 export { SDK_VERSION } from './core/config';
 
-// Export Tracker and CRM classes for direct use
-export { Tracker, CRMClient };
+// Export Tracker, CRM, and Consent classes for direct use
+export { Tracker, CRMClient, ConsentManager };
 
 // Global instance cache
 let globalInstance: Tracker | null = null;
@@ -47,8 +51,18 @@ let globalInstance: Tracker | null = null;
  *   debug: true,
  *   plugins: ['pageView', 'forms', 'scroll'],
  * });
+ * 
+ * @example
+ * // With consent configuration
+ * const tracker = clianta('your-workspace-id', {
+ *   consent: {
+ *     waitForConsent: true,
+ *     anonymousMode: true,
+ *   },
+ *   cookielessMode: true, // GDPR-friendly mode
+ * });
  */
-export function clianta(workspaceId: string, config?: MorrisBConfig): TrackerCore {
+export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore {
     // Return existing instance if same workspace
     if (globalInstance && globalInstance.getWorkspaceId() === workspaceId) {
         return globalInstance;
@@ -67,12 +81,14 @@ export function clianta(workspaceId: string, config?: MorrisBConfig): TrackerCor
 // Attach to window for <script> usage
 if (typeof window !== 'undefined') {
     (window as unknown as { clianta: typeof clianta }).clianta = clianta;
-    (window as unknown as { Clianta: { clianta: typeof clianta; Tracker: typeof Tracker; CRMClient: typeof CRMClient } }).Clianta = {
+    (window as unknown as { Clianta: { clianta: typeof clianta; Tracker: typeof Tracker; CRMClient: typeof CRMClient; ConsentManager: typeof ConsentManager } }).Clianta = {
         clianta,
         Tracker,
         CRMClient,
+        ConsentManager,
     };
 }
 
 // Default export
 export default clianta;
+
