@@ -5,6 +5,58 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-02
+
+### Added
+- **Companies API** - Full CRUD operations for company management
+  - `getCompanies()`, `getCompany()`, `createCompany()`, `updateCompany()`, `deleteCompany()`
+  - `getCompanyContacts()` - Retrieve all contacts associated with a company
+  - `getCompanyDeals()` - Retrieve all deals associated with a company
+- **Pipelines API** - Manage sales pipelines and stages
+  - `getPipelines()`, `getPipeline()`, `createPipeline()`, `updatePipeline()`, `deletePipeline()`
+- **Tasks API** - Task management for CRM workflows
+  - `getTasks()`, `getTask()`, `createTask()`, `updateTask()`, `deleteTask()`
+  - `completeTask()` - Mark a task as completed
+- **Activities API** - Full activity logging system
+  - `getContactActivities()`, `getOpportunityActivities()`
+  - `createActivity()`, `updateActivity()`, `deleteActivity()`
+  - `logCall()` - Quick helper for logging phone calls
+  - `logMeeting()` - Quick helper for logging meetings
+  - `addNote()` - Quick helper for adding notes to contacts/opportunities
+- **New TypeScript Types** - Added `Company`, `Pipeline`, `PipelineStage`, `Task`, `Activity` interfaces
+- **26 new unit tests** for CRM API methods (76 total tests)
+
+## [1.1.1] - 2026-02-01
+
+### Fixed
+- **Security:** Fixed XSS vulnerability in PopupForms plugin - now uses safe DOM APIs instead of innerHTML
+- **Memory Leak:** Fixed PageViewPlugin not cleaning up History API patches and popstate listeners on destroy
+- **Memory Leak:** Added max buffer size (100 events) to consent manager to prevent unbounded memory growth
+- **Race Condition:** Fixed potential race condition in queue flush when events pushed during flush
+- **Divide by Zero:** Fixed scroll depth plugin crash on pages shorter than viewport
+
+### Changed
+- Performance plugin now uses modern `PerformanceNavigationTiming` API with fallback for older browsers
+- Plugin interface now supports async `init()` methods
+- Tracker `destroy()` method is now async and properly awaits queue flush
+
+### Added
+- Client-side rate limiting (100 events per minute) to prevent event flooding
+- Unit test suite with 50+ tests covering core modules (queue, transport, consent, utils)
+
+## [1.1.0] - 2026-01-31
+
+### Added
+- PopupForms plugin for lead capture popups with multiple trigger types (delay, scroll, exit intent, click)
+- React integration with `CliantaProvider`, `useClianta()`, and `useCliantaTrack()` hooks
+- GDPR right-to-erasure via `deleteData()` method
+- Anonymous tracking mode for pre-consent data collection
+- Event buffering when `waitForConsent` is enabled
+
+### Changed
+- Updated SDK_VERSION constant to track version properly
+- Improved TypeScript type exports
+
 ## [1.0.0] - 2026-01-30
 
 ### Added

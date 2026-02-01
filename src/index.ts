@@ -21,7 +21,12 @@ export type {
     Plugin,
     PluginName,
     Contact,
+    Company,
     Opportunity,
+    Pipeline,
+    PipelineStage,
+    Task,
+    Activity,
     ApiResponse,
     PaginatedResponse,
 } from './types';

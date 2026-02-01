@@ -100,8 +100,8 @@ interface UserTraits {
 interface Plugin {
     /** Unique plugin name */
     name: PluginName;
-    /** Initialize the plugin */
-    init(tracker: TrackerCore): void;
+    /** Initialize the plugin (can be sync or async) */
+    init(tracker: TrackerCore): void | Promise<void>;
     /** Cleanup when plugin is disabled */
     destroy?(): void;
 }
@@ -143,9 +143,94 @@ interface Contact {
     jobTitle?: string;
     phone?: string;
     status?: 'lead' | 'contact' | 'customer';
+    lifecycleStage?: 'subscriber' | 'lead' | 'mql' | 'sql' | 'opportunity' | 'customer' | 'evangelist';
     source?: string;
     tags?: string[];
+    leadScore?: number;
     customFields?: Record<string, unknown>;
+    companyId?: string;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface Company {
+    _id?: string;
+    workspaceId: string;
+    name: string;
+    industry?: string;
+    website?: string;
+    phone?: string;
+    address?: {
+        street?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        postalCode?: string;
+    };
+    companySize?: string;
+    annualRevenue?: number;
+    status?: 'prospect' | 'active' | 'inactive' | 'churned';
+    accountTier?: 'enterprise' | 'mid-market' | 'smb';
+    isTargetAccount?: boolean;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface Pipeline {
+    _id?: string;
+    workspaceId: string;
+    name: string;
+    description?: string;
+    stages: PipelineStage[];
+    isDefault?: boolean;
+    isActive?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface PipelineStage {
+    _id?: string;
+    name: string;
+    order: number;
+    probability?: number;
+    color?: string;
+    rottenDays?: number;
+}
+interface Task {
+    _id?: string;
+    workspaceId: string;
+    title: string;
+    description?: string;
+    status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    dueDate?: string;
+    reminderDate?: string;
+    completedAt?: string;
+    tags?: string[];
+    relatedContactId?: string;
+    relatedCompanyId?: string;
+    relatedOpportunityId?: string;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface Activity {
+    _id?: string;
+    workspaceId: string;
+    type: 'call' | 'email' | 'meeting' | 'note' | 'task' | 'other';
+    title: string;
+    description?: string;
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    outcome?: string;
+    emailSubject?: string;
+    emailBody?: string;
+    metadata?: Record<string, unknown>;
+    contactId?: string;
+    companyId?: string;
+    opportunityId?: string;
+    userId?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -153,6 +238,7 @@ interface Opportunity {
     _id?: string;
     workspaceId: string;
     contactId: string;
+    companyId?: string;
     pipelineId: string;
     stageId: string;
     title: string;
@@ -161,8 +247,10 @@ interface Opportunity {
     probability?: number;
     expectedCloseDate?: string;
     status?: 'open' | 'won' | 'lost';
+    priority?: 'low' | 'medium' | 'high';
     lostReason?: string;
     customFields?: Record<string, unknown>;
+    assignedTo?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -215,6 +303,7 @@ declare class Tracker implements TrackerCore {
     private onConsentChange;
     /**
      * Initialize enabled plugins
+     * Handles both sync and async plugin init methods
      */
     private initPlugins;
     /**
@@ -272,7 +361,7 @@ declare class Tracker implements TrackerCore {
     /**
      * Destroy tracker and cleanup
      */
-    destroy(): void;
+    destroy(): Promise<void>;
 }
 
 /**
@@ -350,6 +439,156 @@ declare class CRMClient {
      * Move opportunity to a different stage
      */
     moveOpportunity(opportunityId: string, stageId: string): Promise<ApiResponse<Opportunity>>;
+    /**
+     * Get all companies with pagination
+     */
+    getCompanies(params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: string;
+        industry?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Company>>>;
+    /**
+     * Get a single company by ID
+     */
+    getCompany(companyId: string): Promise<ApiResponse<Company>>;
+    /**
+     * Create a new company
+     */
+    createCompany(company: Partial<Company>): Promise<ApiResponse<Company>>;
+    /**
+     * Update an existing company
+     */
+    updateCompany(companyId: string, updates: Partial<Company>): Promise<ApiResponse<Company>>;
+    /**
+     * Delete a company
+     */
+    deleteCompany(companyId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get contacts belonging to a company
+     */
+    getCompanyContacts(companyId: string, params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
+    /**
+     * Get deals/opportunities belonging to a company
+     */
+    getCompanyDeals(companyId: string, params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Opportunity>>>;
+    /**
+     * Get all pipelines
+     */
+    getPipelines(): Promise<ApiResponse<Pipeline[]>>;
+    /**
+     * Get a single pipeline by ID
+     */
+    getPipeline(pipelineId: string): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Create a new pipeline
+     */
+    createPipeline(pipeline: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Update an existing pipeline
+     */
+    updatePipeline(pipelineId: string, updates: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Delete a pipeline
+     */
+    deletePipeline(pipelineId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get all tasks with pagination
+     */
+    getTasks(params?: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        priority?: string;
+        contactId?: string;
+        companyId?: string;
+        opportunityId?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Task>>>;
+    /**
+     * Get a single task by ID
+     */
+    getTask(taskId: string): Promise<ApiResponse<Task>>;
+    /**
+     * Create a new task
+     */
+    createTask(task: Partial<Task>): Promise<ApiResponse<Task>>;
+    /**
+     * Update an existing task
+     */
+    updateTask(taskId: string, updates: Partial<Task>): Promise<ApiResponse<Task>>;
+    /**
+     * Mark a task as completed
+     */
+    completeTask(taskId: string): Promise<ApiResponse<Task>>;
+    /**
+     * Delete a task
+     */
+    deleteTask(taskId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get activities for a contact
+     */
+    getContactActivities(contactId: string, params?: {
+        page?: number;
+        limit?: number;
+        type?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
+    /**
+     * Get activities for an opportunity/deal
+     */
+    getOpportunityActivities(opportunityId: string, params?: {
+        page?: number;
+        limit?: number;
+        type?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
+    /**
+     * Create a new activity
+     */
+    createActivity(activity: Partial<Activity>): Promise<ApiResponse<Activity>>;
+    /**
+     * Update an existing activity
+     */
+    updateActivity(activityId: string, updates: Partial<Activity>): Promise<ApiResponse<Activity>>;
+    /**
+     * Delete an activity
+     */
+    deleteActivity(activityId: string): Promise<ApiResponse<void>>;
+    /**
+     * Log a call activity
+     */
+    logCall(data: {
+        contactId?: string;
+        opportunityId?: string;
+        direction: 'inbound' | 'outbound';
+        duration?: number;
+        outcome?: string;
+        notes?: string;
+    }): Promise<ApiResponse<Activity>>;
+    /**
+     * Log a meeting activity
+     */
+    logMeeting(data: {
+        contactId?: string;
+        opportunityId?: string;
+        title: string;
+        duration?: number;
+        outcome?: string;
+        notes?: string;
+    }): Promise<ApiResponse<Activity>>;
+    /**
+     * Add a note to a contact or opportunity
+     */
+    addNote(data: {
+        contactId?: string;
+        opportunityId?: string;
+        content: string;
+    }): Promise<ApiResponse<Activity>>;
 }
 
 /**
@@ -448,7 +687,7 @@ interface StoredConsent {
  */
 
 /** SDK Version */
-declare const SDK_VERSION = "1.1.0";
+declare const SDK_VERSION = "1.2.0";
 
 /**
  * Clianta SDK
@@ -483,4 +722,4 @@ declare const SDK_VERSION = "1.1.0";
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
 export { CRMClient, ConsentManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { ApiResponse, CliantaConfig, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, EventType, Opportunity, PaginatedResponse, Plugin, PluginName, StoredConsent, TrackerCore, TrackingEvent, UserTraits };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, EventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TrackerCore, TrackingEvent, UserTraits };

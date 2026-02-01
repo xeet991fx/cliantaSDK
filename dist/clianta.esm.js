@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.1.1
+ * Clianta SDK v1.2.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -8,7 +8,7 @@
  * @see SDK_VERSION in core/config.ts
  */
 /** SDK Version */
-const SDK_VERSION = '1.1.0';
+const SDK_VERSION = '1.2.0';
 /** Default API endpoint based on environment */
 const getDefaultApiEndpoint = () => {
     if (typeof window === 'undefined')
@@ -572,14 +572,20 @@ function getDeviceInfo() {
  * @see SDK_VERSION in core/config.ts
  */
 const MAX_QUEUE_SIZE = 1000;
+/** Rate limit: max events per window */
+const RATE_LIMIT_MAX_EVENTS = 100;
+/** Rate limit window in ms (1 minute) */
+const RATE_LIMIT_WINDOW_MS = 60000;
 /**
- * Event queue with batching, persistence, and auto-flush
+ * Event queue with batching, persistence, rate limiting, and auto-flush
  */
 class EventQueue {
     constructor(transport, config = {}) {
         this.queue = [];
         this.flushTimer = null;
         this.isFlushing = false;
+        /** Rate limiting: timestamps of recent events */
+        this.eventTimestamps = [];
         this.transport = transport;
         this.config = {
             batchSize: config.batchSize ?? 10,
@@ -598,6 +604,11 @@ class EventQueue {
      * Add an event to the queue
      */
     push(event) {
+        // Rate limiting check
+        if (!this.checkRateLimit()) {
+            logger.warn('Rate limit exceeded, event dropped:', event.eventName);
+            return;
+        }
         // Don't exceed max queue size
         if (this.queue.length >= this.config.maxQueueSize) {
             logger.warn('Queue full, dropping oldest event');
@@ -611,6 +622,22 @@ class EventQueue {
         }
     }
     /**
+     * Check and enforce rate limiting
+     * @returns true if event is allowed, false if rate limited
+     */
+    checkRateLimit() {
+        const now = Date.now();
+        // Remove timestamps outside the window
+        this.eventTimestamps = this.eventTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+        // Check if under limit
+        if (this.eventTimestamps.length >= RATE_LIMIT_MAX_EVENTS) {
+            return false;
+        }
+        // Record this event
+        this.eventTimestamps.push(now);
+        return true;
+    }
+    /**
      * Flush the queue (send all events)
      */
     async flush() {
@@ -618,9 +645,10 @@ class EventQueue {
             return;
         }
         this.isFlushing = true;
+        // Atomically take snapshot of current queue length to avoid race condition
+        const count = this.queue.length;
+        const events = this.queue.splice(0, count);
         try {
-            // Take all events from queue
-            const events = this.queue.splice(0, this.queue.length);
             logger.debug(`Flushing ${events.length} events`);
             // Clear persisted queue
             this.persistQueue([]);
@@ -778,6 +806,9 @@ class PageViewPlugin extends BasePlugin {
     constructor() {
         super(...arguments);
         this.name = 'pageView';
+        this.originalPushState = null;
+        this.originalReplaceState = null;
+        this.popstateHandler = null;
     }
     init(tracker) {
         super.init(tracker);
@@ -785,22 +816,40 @@ class PageViewPlugin extends BasePlugin {
         this.trackPageView();
         // Track SPA navigation (History API)
         if (typeof window !== 'undefined') {
+            // Store originals for cleanup
+            this.originalPushState = history.pushState;
+            this.originalReplaceState = history.replaceState;
             // Intercept pushState and replaceState
-            const originalPushState = history.pushState;
-            const originalReplaceState = history.replaceState;
-            history.pushState = (...args) => {
-                originalPushState.apply(history, args);
-                this.trackPageView();
+            const self = this;
+            history.pushState = function (...args) {
+                self.originalPushState.apply(history, args);
+                self.trackPageView();
             };
-            history.replaceState = (...args) => {
-                originalReplaceState.apply(history, args);
-                this.trackPageView();
+            history.replaceState = function (...args) {
+                self.originalReplaceState.apply(history, args);
+                self.trackPageView();
             };
             // Handle back/forward navigation
-            window.addEventListener('popstate', () => {
-                this.trackPageView();
-            });
+            this.popstateHandler = () => this.trackPageView();
+            window.addEventListener('popstate', this.popstateHandler);
         }
+    }
+    destroy() {
+        // Restore original history methods
+        if (this.originalPushState) {
+            history.pushState = this.originalPushState;
+            this.originalPushState = null;
+        }
+        if (this.originalReplaceState) {
+            history.replaceState = this.originalReplaceState;
+            this.originalReplaceState = null;
+        }
+        // Remove popstate listener
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
+        super.destroy();
     }
     trackPageView() {
         if (typeof window === 'undefined' || typeof document === 'undefined')
@@ -863,7 +912,11 @@ class ScrollPlugin extends BasePlugin {
         const windowHeight = window.innerHeight;
         const documentHeight = document.documentElement.scrollHeight;
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollPercent = Math.floor((scrollTop / (documentHeight - windowHeight)) * 100);
+        const scrollableHeight = documentHeight - windowHeight;
+        // Guard against divide-by-zero on short pages
+        if (scrollableHeight <= 0)
+            return;
+        const scrollPercent = Math.floor((scrollTop / scrollableHeight) * 100);
         // Clamp to valid range
         const clampedPercent = Math.max(0, Math.min(100, scrollPercent));
         // Update max scroll depth
@@ -1282,20 +1335,41 @@ class PerformancePlugin extends BasePlugin {
     trackPerformance() {
         if (typeof performance === 'undefined')
             return;
-        // Use Navigation Timing API
-        const timing = performance.timing;
-        if (!timing)
-            return;
-        const loadTime = timing.loadEventEnd - timing.navigationStart;
-        const domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
-        const ttfb = timing.responseStart - timing.navigationStart;
-        const domInteractive = timing.domInteractive - timing.navigationStart;
-        this.track('performance', 'Page Performance', {
-            loadTime,
-            domReady,
-            ttfb, // Time to First Byte
-            domInteractive,
-        });
+        // Use modern Navigation Timing API (PerformanceNavigationTiming)
+        const entries = performance.getEntriesByType('navigation');
+        if (entries.length > 0) {
+            const navTiming = entries[0];
+            const loadTime = Math.round(navTiming.loadEventEnd - navTiming.startTime);
+            const domReady = Math.round(navTiming.domContentLoadedEventEnd - navTiming.startTime);
+            const ttfb = Math.round(navTiming.responseStart - navTiming.requestStart);
+            const domInteractive = Math.round(navTiming.domInteractive - navTiming.startTime);
+            this.track('performance', 'Page Performance', {
+                loadTime,
+                domReady,
+                ttfb, // Time to First Byte
+                domInteractive,
+                // Additional modern metrics
+                dns: Math.round(navTiming.domainLookupEnd - navTiming.domainLookupStart),
+                connection: Math.round(navTiming.connectEnd - navTiming.connectStart),
+                transferSize: navTiming.transferSize,
+            });
+        }
+        else {
+            // Fallback for older browsers using deprecated API
+            const timing = performance.timing;
+            if (!timing)
+                return;
+            const loadTime = timing.loadEventEnd - timing.navigationStart;
+            const domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
+            const ttfb = timing.responseStart - timing.navigationStart;
+            const domInteractive = timing.domInteractive - timing.navigationStart;
+            this.track('performance', 'Page Performance', {
+                loadTime,
+                domReady,
+                ttfb,
+                domInteractive,
+            });
+        }
         // Track Web Vitals if available
         this.trackWebVitals();
     }
@@ -1572,8 +1646,8 @@ class PopupFormsPlugin extends BasePlugin {
             opacity: 0;
             transition: all 0.3s ease;
         `;
-        // Build form HTML
-        container.innerHTML = this.buildFormHTML(form);
+        // Build form using safe DOM APIs (no innerHTML for user content)
+        this.buildFormDOM(form, container);
         overlay.appendChild(container);
         document.body.appendChild(overlay);
         // Animate in
@@ -1584,6 +1658,131 @@ class PopupFormsPlugin extends BasePlugin {
         });
         // Setup event listeners
         this.setupFormEvents(form, overlay, container);
+    }
+    /**
+     * Escape HTML to prevent XSS - used only for static structure
+     */
+    escapeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+    /**
+     * Build form using safe DOM APIs (prevents XSS)
+     */
+    buildFormDOM(form, container) {
+        const style = form.style || {};
+        const primaryColor = style.primaryColor || '#10B981';
+        const textColor = style.textColor || '#18181B';
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'clianta-form-close';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #71717A;
+            padding: 4px;
+        `;
+        closeBtn.textContent = '×';
+        container.appendChild(closeBtn);
+        // Headline
+        const headline = document.createElement('h2');
+        headline.style.cssText = `font-size: 20px; font-weight: 700; margin-bottom: 8px; color: ${this.escapeHTML(textColor)};`;
+        headline.textContent = form.headline || 'Stay in touch';
+        container.appendChild(headline);
+        // Subheadline
+        const subheadline = document.createElement('p');
+        subheadline.style.cssText = 'font-size: 14px; color: #71717A; margin-bottom: 16px;';
+        subheadline.textContent = form.subheadline || 'Get the latest updates';
+        container.appendChild(subheadline);
+        // Form element
+        const formElement = document.createElement('form');
+        formElement.id = 'clianta-form-element';
+        // Build fields
+        form.fields.forEach(field => {
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.style.marginBottom = '12px';
+            if (field.type === 'checkbox') {
+                // Checkbox layout
+                const label = document.createElement('label');
+                label.style.cssText = `display: flex; align-items: center; gap: 8px; font-size: 14px; color: ${this.escapeHTML(textColor)}; cursor: pointer;`;
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.name = field.name;
+                if (field.required)
+                    input.required = true;
+                input.style.cssText = 'width: 16px; height: 16px;';
+                label.appendChild(input);
+                const labelText = document.createTextNode(field.label + ' ');
+                label.appendChild(labelText);
+                if (field.required) {
+                    const requiredMark = document.createElement('span');
+                    requiredMark.style.color = '#EF4444';
+                    requiredMark.textContent = '*';
+                    label.appendChild(requiredMark);
+                }
+                fieldWrapper.appendChild(label);
+            }
+            else {
+                // Label
+                const label = document.createElement('label');
+                label.style.cssText = `display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${this.escapeHTML(textColor)};`;
+                label.textContent = field.label + ' ';
+                if (field.required) {
+                    const requiredMark = document.createElement('span');
+                    requiredMark.style.color = '#EF4444';
+                    requiredMark.textContent = '*';
+                    label.appendChild(requiredMark);
+                }
+                fieldWrapper.appendChild(label);
+                // Input/Textarea
+                if (field.type === 'textarea') {
+                    const textarea = document.createElement('textarea');
+                    textarea.name = field.name;
+                    if (field.placeholder)
+                        textarea.placeholder = field.placeholder;
+                    if (field.required)
+                        textarea.required = true;
+                    textarea.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px; box-sizing: border-box;';
+                    fieldWrapper.appendChild(textarea);
+                }
+                else {
+                    const input = document.createElement('input');
+                    input.type = field.type;
+                    input.name = field.name;
+                    if (field.placeholder)
+                        input.placeholder = field.placeholder;
+                    if (field.required)
+                        input.required = true;
+                    input.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box;';
+                    fieldWrapper.appendChild(input);
+                }
+            }
+            formElement.appendChild(fieldWrapper);
+        });
+        // Submit button
+        const submitBtn = document.createElement('button');
+        submitBtn.type = 'submit';
+        submitBtn.style.cssText = `
+            width: 100%;
+            padding: 10px 16px;
+            background: ${this.escapeHTML(primaryColor)};
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 8px;
+        `;
+        submitBtn.textContent = form.submitButtonText || 'Subscribe';
+        formElement.appendChild(submitBtn);
+        container.appendChild(formElement);
     }
     buildFormHTML(form) {
         const style = form.style || {};
@@ -1734,19 +1933,29 @@ class PopupFormsPlugin extends BasePlugin {
             });
             const result = await response.json();
             if (result.success) {
-                // Show success message
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 20px;">
-                        <div style="width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                        </div>
-                        <p style="font-size: 16px; font-weight: 500; color: #18181B;">
-                            ${form.successMessage || 'Thank you!'}
-                        </p>
-                    </div>
-                `;
+                // Show success message using safe DOM APIs
+                container.innerHTML = '';
+                const successWrapper = document.createElement('div');
+                successWrapper.style.cssText = 'text-align: center; padding: 20px;';
+                const iconWrapper = document.createElement('div');
+                iconWrapper.style.cssText = 'width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;';
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', '24');
+                svg.setAttribute('height', '24');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'white');
+                svg.setAttribute('stroke-width', '2');
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('points', '20 6 9 17 4 12');
+                svg.appendChild(polyline);
+                iconWrapper.appendChild(svg);
+                const message = document.createElement('p');
+                message.style.cssText = 'font-size: 16px; font-weight: 500; color: #18181B;';
+                message.textContent = form.successMessage || 'Thank you!';
+                successWrapper.appendChild(iconWrapper);
+                successWrapper.appendChild(message);
+                container.appendChild(successWrapper);
                 // Track identify
                 if (data.email) {
                     this.tracker?.identify(data.email, data);
@@ -1883,6 +2092,8 @@ function hasStoredConsent() {
  * Manages consent state and event buffering for GDPR/CCPA compliance
  * @see SDK_VERSION in core/config.ts
  */
+/** Maximum events to buffer while waiting for consent */
+const MAX_BUFFER_SIZE = 100;
 /**
  * Manages user consent state for tracking
  */
@@ -1999,6 +2210,11 @@ class ConsentManager {
      * Buffer an event (for waitForConsent mode)
      */
     bufferEvent(event) {
+        // Prevent unbounded buffer growth
+        if (this.eventBuffer.length >= MAX_BUFFER_SIZE) {
+            logger.warn('Consent event buffer full, dropping oldest event');
+            this.eventBuffer.shift();
+        }
         this.eventBuffer.push(event);
         logger.debug('Event buffered (waiting for consent):', event.eventName);
     }
@@ -2143,6 +2359,7 @@ class Tracker {
     }
     /**
      * Initialize enabled plugins
+     * Handles both sync and async plugin init methods
      */
     initPlugins() {
         const pluginsToLoad = this.config.plugins;
@@ -2153,7 +2370,13 @@ class Tracker {
         for (const pluginName of filteredPlugins) {
             try {
                 const plugin = getPlugin(pluginName);
-                plugin.init(this);
+                // Handle both sync and async init (fire-and-forget for async)
+                const result = plugin.init(this);
+                if (result instanceof Promise) {
+                    result.catch((error) => {
+                        logger.error(`Async plugin init failed: ${pluginName}`, error);
+                    });
+                }
                 this.plugins.push(plugin);
                 logger.debug(`Plugin loaded: ${pluginName}`);
             }
@@ -2331,10 +2554,10 @@ class Tracker {
     /**
      * Destroy tracker and cleanup
      */
-    destroy() {
+    async destroy() {
         logger.info('Destroying tracker');
-        // Flush any remaining events
-        this.queue.flush();
+        // Flush any remaining events (await to ensure completion)
+        await this.queue.flush();
         // Destroy plugins
         for (const plugin of this.plugins) {
             if (plugin.destroy) {
@@ -2517,6 +2740,304 @@ class CRMClient {
         return this.request(`/api/workspaces/${this.workspaceId}/opportunities/${opportunityId}/move`, {
             method: 'POST',
             body: JSON.stringify({ stageId }),
+        });
+    }
+    // ============================================
+    // COMPANIES API
+    // ============================================
+    /**
+     * Get all companies with pagination
+     */
+    async getCompanies(params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        if (params?.search)
+            queryParams.set('search', params.search);
+        if (params?.status)
+            queryParams.set('status', params.status);
+        if (params?.industry)
+            queryParams.set('industry', params.industry);
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/companies${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Get a single company by ID
+     */
+    async getCompany(companyId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/companies/${companyId}`);
+    }
+    /**
+     * Create a new company
+     */
+    async createCompany(company) {
+        return this.request(`/api/workspaces/${this.workspaceId}/companies`, {
+            method: 'POST',
+            body: JSON.stringify(company),
+        });
+    }
+    /**
+     * Update an existing company
+     */
+    async updateCompany(companyId, updates) {
+        return this.request(`/api/workspaces/${this.workspaceId}/companies/${companyId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+        });
+    }
+    /**
+     * Delete a company
+     */
+    async deleteCompany(companyId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/companies/${companyId}`, {
+            method: 'DELETE',
+        });
+    }
+    /**
+     * Get contacts belonging to a company
+     */
+    async getCompanyContacts(companyId, params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/companies/${companyId}/contacts${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Get deals/opportunities belonging to a company
+     */
+    async getCompanyDeals(companyId, params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/companies/${companyId}/deals${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    // ============================================
+    // PIPELINES API
+    // ============================================
+    /**
+     * Get all pipelines
+     */
+    async getPipelines() {
+        return this.request(`/api/workspaces/${this.workspaceId}/pipelines`);
+    }
+    /**
+     * Get a single pipeline by ID
+     */
+    async getPipeline(pipelineId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/pipelines/${pipelineId}`);
+    }
+    /**
+     * Create a new pipeline
+     */
+    async createPipeline(pipeline) {
+        return this.request(`/api/workspaces/${this.workspaceId}/pipelines`, {
+            method: 'POST',
+            body: JSON.stringify(pipeline),
+        });
+    }
+    /**
+     * Update an existing pipeline
+     */
+    async updatePipeline(pipelineId, updates) {
+        return this.request(`/api/workspaces/${this.workspaceId}/pipelines/${pipelineId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+        });
+    }
+    /**
+     * Delete a pipeline
+     */
+    async deletePipeline(pipelineId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/pipelines/${pipelineId}`, {
+            method: 'DELETE',
+        });
+    }
+    // ============================================
+    // TASKS API
+    // ============================================
+    /**
+     * Get all tasks with pagination
+     */
+    async getTasks(params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        if (params?.status)
+            queryParams.set('status', params.status);
+        if (params?.priority)
+            queryParams.set('priority', params.priority);
+        if (params?.contactId)
+            queryParams.set('contactId', params.contactId);
+        if (params?.companyId)
+            queryParams.set('companyId', params.companyId);
+        if (params?.opportunityId)
+            queryParams.set('opportunityId', params.opportunityId);
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/tasks${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Get a single task by ID
+     */
+    async getTask(taskId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/tasks/${taskId}`);
+    }
+    /**
+     * Create a new task
+     */
+    async createTask(task) {
+        return this.request(`/api/workspaces/${this.workspaceId}/tasks`, {
+            method: 'POST',
+            body: JSON.stringify(task),
+        });
+    }
+    /**
+     * Update an existing task
+     */
+    async updateTask(taskId, updates) {
+        return this.request(`/api/workspaces/${this.workspaceId}/tasks/${taskId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+        });
+    }
+    /**
+     * Mark a task as completed
+     */
+    async completeTask(taskId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/tasks/${taskId}/complete`, {
+            method: 'PATCH',
+        });
+    }
+    /**
+     * Delete a task
+     */
+    async deleteTask(taskId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/tasks/${taskId}`, {
+            method: 'DELETE',
+        });
+    }
+    // ============================================
+    // ACTIVITIES API
+    // ============================================
+    /**
+     * Get activities for a contact
+     */
+    async getContactActivities(contactId, params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        if (params?.type)
+            queryParams.set('type', params.type);
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts/${contactId}/activities${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Get activities for an opportunity/deal
+     */
+    async getOpportunityActivities(opportunityId, params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        if (params?.type)
+            queryParams.set('type', params.type);
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/opportunities/${opportunityId}/activities${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Create a new activity
+     */
+    async createActivity(activity) {
+        // Determine the correct endpoint based on related entity
+        let endpoint;
+        if (activity.opportunityId) {
+            endpoint = `/api/workspaces/${this.workspaceId}/opportunities/${activity.opportunityId}/activities`;
+        }
+        else if (activity.contactId) {
+            endpoint = `/api/workspaces/${this.workspaceId}/contacts/${activity.contactId}/activities`;
+        }
+        else {
+            endpoint = `/api/workspaces/${this.workspaceId}/activities`;
+        }
+        return this.request(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(activity),
+        });
+    }
+    /**
+     * Update an existing activity
+     */
+    async updateActivity(activityId, updates) {
+        return this.request(`/api/workspaces/${this.workspaceId}/activities/${activityId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates),
+        });
+    }
+    /**
+     * Delete an activity
+     */
+    async deleteActivity(activityId) {
+        return this.request(`/api/workspaces/${this.workspaceId}/activities/${activityId}`, {
+            method: 'DELETE',
+        });
+    }
+    /**
+     * Log a call activity
+     */
+    async logCall(data) {
+        return this.createActivity({
+            type: 'call',
+            title: `${data.direction === 'inbound' ? 'Inbound' : 'Outbound'} Call`,
+            direction: data.direction,
+            duration: data.duration,
+            outcome: data.outcome,
+            description: data.notes,
+            contactId: data.contactId,
+            opportunityId: data.opportunityId,
+        });
+    }
+    /**
+     * Log a meeting activity
+     */
+    async logMeeting(data) {
+        return this.createActivity({
+            type: 'meeting',
+            title: data.title,
+            duration: data.duration,
+            outcome: data.outcome,
+            description: data.notes,
+            contactId: data.contactId,
+            opportunityId: data.opportunityId,
+        });
+    }
+    /**
+     * Add a note to a contact or opportunity
+     */
+    async addNote(data) {
+        return this.createActivity({
+            type: 'note',
+            title: 'Note',
+            description: data.content,
+            contactId: data.contactId,
+            opportunityId: data.opportunityId,
         });
     }
 }

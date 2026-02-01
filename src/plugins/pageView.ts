@@ -11,6 +11,9 @@ import { BasePlugin } from './base';
  */
 export class PageViewPlugin extends BasePlugin {
     name: PluginName = 'pageView';
+    private originalPushState: typeof history.pushState | null = null;
+    private originalReplaceState: typeof history.replaceState | null = null;
+    private popstateHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -20,25 +23,44 @@ export class PageViewPlugin extends BasePlugin {
 
         // Track SPA navigation (History API)
         if (typeof window !== 'undefined') {
-            // Intercept pushState and replaceState
-            const originalPushState = history.pushState;
-            const originalReplaceState = history.replaceState;
+            // Store originals for cleanup
+            this.originalPushState = history.pushState;
+            this.originalReplaceState = history.replaceState;
 
-            history.pushState = (...args) => {
-                originalPushState.apply(history, args);
-                this.trackPageView();
+            // Intercept pushState and replaceState
+            const self = this;
+            history.pushState = function(...args) {
+                self.originalPushState!.apply(history, args);
+                self.trackPageView();
             };
 
-            history.replaceState = (...args) => {
-                originalReplaceState.apply(history, args);
-                this.trackPageView();
+            history.replaceState = function(...args) {
+                self.originalReplaceState!.apply(history, args);
+                self.trackPageView();
             };
 
             // Handle back/forward navigation
-            window.addEventListener('popstate', () => {
-                this.trackPageView();
-            });
+            this.popstateHandler = () => this.trackPageView();
+            window.addEventListener('popstate', this.popstateHandler);
         }
+    }
+
+    destroy(): void {
+        // Restore original history methods
+        if (this.originalPushState) {
+            history.pushState = this.originalPushState;
+            this.originalPushState = null;
+        }
+        if (this.originalReplaceState) {
+            history.replaceState = this.originalReplaceState;
+            this.originalReplaceState = null;
+        }
+        // Remove popstate listener
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
+        super.destroy();
     }
 
     private trackPageView(): void {

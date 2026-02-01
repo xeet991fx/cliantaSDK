@@ -145,6 +145,7 @@ export class Tracker implements TrackerCore {
 
     /**
      * Initialize enabled plugins
+     * Handles both sync and async plugin init methods
      */
     private initPlugins(): void {
         const pluginsToLoad = this.config.plugins;
@@ -157,7 +158,13 @@ export class Tracker implements TrackerCore {
         for (const pluginName of filteredPlugins) {
             try {
                 const plugin = getPlugin(pluginName);
-                plugin.init(this);
+                // Handle both sync and async init (fire-and-forget for async)
+                const result = plugin.init(this);
+                if (result instanceof Promise) {
+                    result.catch((error) => {
+                        logger.error(`Async plugin init failed: ${pluginName}`, error);
+                    });
+                }
                 this.plugins.push(plugin);
                 logger.debug(`Plugin loaded: ${pluginName}`);
             } catch (error) {
@@ -362,11 +369,11 @@ export class Tracker implements TrackerCore {
     /**
      * Destroy tracker and cleanup
      */
-    destroy(): void {
+    async destroy(): Promise<void> {
         logger.info('Destroying tracker');
 
-        // Flush any remaining events
-        this.queue.flush();
+        // Flush any remaining events (await to ensure completion)
+        await this.queue.flush();
 
         // Destroy plugins
         for (const plugin of this.plugins) {

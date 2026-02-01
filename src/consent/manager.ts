@@ -8,6 +8,9 @@ import type { ConsentState, ConsentConfig, TrackingEvent } from '../types';
 import { saveConsent, loadConsent, clearConsent, hasStoredConsent } from './storage';
 import { logger } from '../core/logger';
 
+/** Maximum events to buffer while waiting for consent */
+const MAX_BUFFER_SIZE = 100;
+
 export type ConsentChangeCallback = (state: ConsentState, previous: ConsentState) => void;
 
 export interface ConsentManagerConfig extends ConsentConfig {
@@ -153,6 +156,11 @@ export class ConsentManager {
      * Buffer an event (for waitForConsent mode)
      */
     bufferEvent(event: TrackingEvent): void {
+        // Prevent unbounded buffer growth
+        if (this.eventBuffer.length >= MAX_BUFFER_SIZE) {
+            logger.warn('Consent event buffer full, dropping oldest event');
+            this.eventBuffer.shift();
+        }
         this.eventBuffer.push(event);
         logger.debug('Event buffered (waiting for consent):', event.eventName);
     }

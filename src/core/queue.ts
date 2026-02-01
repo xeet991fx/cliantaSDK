@@ -11,9 +11,13 @@ import { getLocalStorage, setLocalStorage } from '../utils';
 import { STORAGE_KEYS } from './config';
 
 const MAX_QUEUE_SIZE = 1000;
+/** Rate limit: max events per window */
+const RATE_LIMIT_MAX_EVENTS = 100;
+/** Rate limit window in ms (1 minute) */
+const RATE_LIMIT_WINDOW_MS = 60000;
 
 /**
- * Event queue with batching, persistence, and auto-flush
+ * Event queue with batching, persistence, rate limiting, and auto-flush
  */
 export class EventQueue {
     private queue: TrackingEvent[] = [];
@@ -21,6 +25,8 @@ export class EventQueue {
     private config: Required<QueueConfig>;
     private flushTimer: ReturnType<typeof setInterval> | null = null;
     private isFlushing = false;
+    /** Rate limiting: timestamps of recent events */
+    private eventTimestamps: number[] = [];
 
     constructor(transport: Transport, config: Partial<QueueConfig> = {}) {
         this.transport = transport;
@@ -45,6 +51,12 @@ export class EventQueue {
      * Add an event to the queue
      */
     push(event: TrackingEvent): void {
+        // Rate limiting check
+        if (!this.checkRateLimit()) {
+            logger.warn('Rate limit exceeded, event dropped:', event.eventName);
+            return;
+        }
+
         // Don't exceed max queue size
         if (this.queue.length >= this.config.maxQueueSize) {
             logger.warn('Queue full, dropping oldest event');
@@ -61,6 +73,28 @@ export class EventQueue {
     }
 
     /**
+     * Check and enforce rate limiting
+     * @returns true if event is allowed, false if rate limited
+     */
+    private checkRateLimit(): boolean {
+        const now = Date.now();
+        
+        // Remove timestamps outside the window
+        this.eventTimestamps = this.eventTimestamps.filter(
+            ts => now - ts < RATE_LIMIT_WINDOW_MS
+        );
+
+        // Check if under limit
+        if (this.eventTimestamps.length >= RATE_LIMIT_MAX_EVENTS) {
+            return false;
+        }
+
+        // Record this event
+        this.eventTimestamps.push(now);
+        return true;
+    }
+
+    /**
      * Flush the queue (send all events)
      */
     async flush(): Promise<void> {
@@ -70,9 +104,11 @@ export class EventQueue {
 
         this.isFlushing = true;
 
+        // Atomically take snapshot of current queue length to avoid race condition
+        const count = this.queue.length;
+        const events = this.queue.splice(0, count);
+
         try {
-            // Take all events from queue
-            const events = this.queue.splice(0, this.queue.length);
             logger.debug(`Flushing ${events.length} events`);
 
             // Clear persisted queue

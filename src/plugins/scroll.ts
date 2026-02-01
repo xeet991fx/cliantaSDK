@@ -52,7 +52,12 @@ export class ScrollPlugin extends BasePlugin {
         const windowHeight = window.innerHeight;
         const documentHeight = document.documentElement.scrollHeight;
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollPercent = Math.floor((scrollTop / (documentHeight - windowHeight)) * 100);
+        const scrollableHeight = documentHeight - windowHeight;
+
+        // Guard against divide-by-zero on short pages
+        if (scrollableHeight <= 0) return;
+
+        const scrollPercent = Math.floor((scrollTop / scrollableHeight) * 100);
 
         // Clamp to valid range
         const clampedPercent = Math.max(0, Math.min(100, scrollPercent));

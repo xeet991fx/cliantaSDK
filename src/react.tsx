@@ -84,7 +84,7 @@ export function useClianta(): TrackerCore | null {
 }
 
 /**
- * useClinataTrack - Convenience hook for tracking events
+ * useCliantaTrack - Convenience hook for tracking events
  * 
  * @example
  * const track = useCliantaTrack();

@@ -272,8 +272,8 @@ export class PopupFormsPlugin extends BasePlugin {
             transition: all 0.3s ease;
         `;
 
-        // Build form HTML
-        container.innerHTML = this.buildFormHTML(form);
+        // Build form using safe DOM APIs (no innerHTML for user content)
+        this.buildFormDOM(form, container);
 
         overlay.appendChild(container);
         document.body.appendChild(overlay);
@@ -287,6 +287,143 @@ export class PopupFormsPlugin extends BasePlugin {
 
         // Setup event listeners
         this.setupFormEvents(form, overlay, container);
+    }
+
+    /**
+     * Escape HTML to prevent XSS - used only for static structure
+     */
+    private escapeHTML(str: string): string {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    /**
+     * Build form using safe DOM APIs (prevents XSS)
+     */
+    private buildFormDOM(form: LeadForm, container: HTMLElement): void {
+        const style = form.style || {};
+        const primaryColor = style.primaryColor || '#10B981';
+        const textColor = style.textColor || '#18181B';
+
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'clianta-form-close';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #71717A;
+            padding: 4px;
+        `;
+        closeBtn.textContent = '×';
+        container.appendChild(closeBtn);
+
+        // Headline
+        const headline = document.createElement('h2');
+        headline.style.cssText = `font-size: 20px; font-weight: 700; margin-bottom: 8px; color: ${this.escapeHTML(textColor)};`;
+        headline.textContent = form.headline || 'Stay in touch';
+        container.appendChild(headline);
+
+        // Subheadline
+        const subheadline = document.createElement('p');
+        subheadline.style.cssText = 'font-size: 14px; color: #71717A; margin-bottom: 16px;';
+        subheadline.textContent = form.subheadline || 'Get the latest updates';
+        container.appendChild(subheadline);
+
+        // Form element
+        const formElement = document.createElement('form');
+        formElement.id = 'clianta-form-element';
+
+        // Build fields
+        form.fields.forEach(field => {
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.style.marginBottom = '12px';
+
+            if (field.type === 'checkbox') {
+                // Checkbox layout
+                const label = document.createElement('label');
+                label.style.cssText = `display: flex; align-items: center; gap: 8px; font-size: 14px; color: ${this.escapeHTML(textColor)}; cursor: pointer;`;
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.name = field.name;
+                if (field.required) input.required = true;
+                input.style.cssText = 'width: 16px; height: 16px;';
+
+                label.appendChild(input);
+
+                const labelText = document.createTextNode(field.label + ' ');
+                label.appendChild(labelText);
+
+                if (field.required) {
+                    const requiredMark = document.createElement('span');
+                    requiredMark.style.color = '#EF4444';
+                    requiredMark.textContent = '*';
+                    label.appendChild(requiredMark);
+                }
+
+                fieldWrapper.appendChild(label);
+            } else {
+                // Label
+                const label = document.createElement('label');
+                label.style.cssText = `display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${this.escapeHTML(textColor)};`;
+                label.textContent = field.label + ' ';
+
+                if (field.required) {
+                    const requiredMark = document.createElement('span');
+                    requiredMark.style.color = '#EF4444';
+                    requiredMark.textContent = '*';
+                    label.appendChild(requiredMark);
+                }
+
+                fieldWrapper.appendChild(label);
+
+                // Input/Textarea
+                if (field.type === 'textarea') {
+                    const textarea = document.createElement('textarea');
+                    textarea.name = field.name;
+                    if (field.placeholder) textarea.placeholder = field.placeholder;
+                    if (field.required) textarea.required = true;
+                    textarea.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px; box-sizing: border-box;';
+                    fieldWrapper.appendChild(textarea);
+                } else {
+                    const input = document.createElement('input');
+                    input.type = field.type;
+                    input.name = field.name;
+                    if (field.placeholder) input.placeholder = field.placeholder;
+                    if (field.required) input.required = true;
+                    input.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box;';
+                    fieldWrapper.appendChild(input);
+                }
+            }
+
+            formElement.appendChild(fieldWrapper);
+        });
+
+        // Submit button
+        const submitBtn = document.createElement('button');
+        submitBtn.type = 'submit';
+        submitBtn.style.cssText = `
+            width: 100%;
+            padding: 10px 16px;
+            background: ${this.escapeHTML(primaryColor)};
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 8px;
+        `;
+        submitBtn.textContent = form.submitButtonText || 'Subscribe';
+        formElement.appendChild(submitBtn);
+
+        container.appendChild(formElement);
     }
 
     private buildFormHTML(form: LeadForm): string {
@@ -450,19 +587,35 @@ export class PopupFormsPlugin extends BasePlugin {
             const result = await response.json();
 
             if (result.success) {
-                // Show success message
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 20px;">
-                        <div style="width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                        </div>
-                        <p style="font-size: 16px; font-weight: 500; color: #18181B;">
-                            ${form.successMessage || 'Thank you!'}
-                        </p>
-                    </div>
-                `;
+                // Show success message using safe DOM APIs
+                container.innerHTML = '';
+                
+                const successWrapper = document.createElement('div');
+                successWrapper.style.cssText = 'text-align: center; padding: 20px;';
+                
+                const iconWrapper = document.createElement('div');
+                iconWrapper.style.cssText = 'width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;';
+                
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', '24');
+                svg.setAttribute('height', '24');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'white');
+                svg.setAttribute('stroke-width', '2');
+                
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('points', '20 6 9 17 4 12');
+                svg.appendChild(polyline);
+                iconWrapper.appendChild(svg);
+                
+                const message = document.createElement('p');
+                message.style.cssText = 'font-size: 16px; font-weight: 500; color: #18181B;';
+                message.textContent = form.successMessage || 'Thank you!';
+                
+                successWrapper.appendChild(iconWrapper);
+                successWrapper.appendChild(message);
+                container.appendChild(successWrapper);
 
                 // Track identify
                 if (data.email) {

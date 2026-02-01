@@ -27,21 +27,44 @@ export class PerformancePlugin extends BasePlugin {
     private trackPerformance(): void {
         if (typeof performance === 'undefined') return;
 
-        // Use Navigation Timing API
-        const timing = performance.timing;
-        if (!timing) return;
+        // Use modern Navigation Timing API (PerformanceNavigationTiming)
+        const entries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+        
+        if (entries.length > 0) {
+            const navTiming = entries[0];
+            
+            const loadTime = Math.round(navTiming.loadEventEnd - navTiming.startTime);
+            const domReady = Math.round(navTiming.domContentLoadedEventEnd - navTiming.startTime);
+            const ttfb = Math.round(navTiming.responseStart - navTiming.requestStart);
+            const domInteractive = Math.round(navTiming.domInteractive - navTiming.startTime);
 
-        const loadTime = timing.loadEventEnd - timing.navigationStart;
-        const domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
-        const ttfb = timing.responseStart - timing.navigationStart;
-        const domInteractive = timing.domInteractive - timing.navigationStart;
+            this.track('performance', 'Page Performance', {
+                loadTime,
+                domReady,
+                ttfb, // Time to First Byte
+                domInteractive,
+                // Additional modern metrics
+                dns: Math.round(navTiming.domainLookupEnd - navTiming.domainLookupStart),
+                connection: Math.round(navTiming.connectEnd - navTiming.connectStart),
+                transferSize: navTiming.transferSize,
+            });
+        } else {
+            // Fallback for older browsers using deprecated API
+            const timing = performance.timing;
+            if (!timing) return;
 
-        this.track('performance', 'Page Performance', {
-            loadTime,
-            domReady,
-            ttfb, // Time to First Byte
-            domInteractive,
-        });
+            const loadTime = timing.loadEventEnd - timing.navigationStart;
+            const domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
+            const ttfb = timing.responseStart - timing.navigationStart;
+            const domInteractive = timing.domInteractive - timing.navigationStart;
+
+            this.track('performance', 'Page Performance', {
+                loadTime,
+                domReady,
+                ttfb,
+                domInteractive,
+            });
+        }
 
         // Track Web Vitals if available
         this.trackWebVitals();

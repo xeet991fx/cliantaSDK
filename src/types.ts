@@ -189,8 +189,8 @@ export interface Plugin {
     /** Unique plugin name */
     name: PluginName;
 
-    /** Initialize the plugin */
-    init(tracker: TrackerCore): void;
+    /** Initialize the plugin (can be sync or async) */
+    init(tracker: TrackerCore): void | Promise<void>;
 
     /** Cleanup when plugin is disabled */
     destroy?(): void;
@@ -301,9 +301,99 @@ export interface Contact {
     jobTitle?: string;
     phone?: string;
     status?: 'lead' | 'contact' | 'customer';
+    lifecycleStage?: 'subscriber' | 'lead' | 'mql' | 'sql' | 'opportunity' | 'customer' | 'evangelist';
     source?: string;
     tags?: string[];
+    leadScore?: number;
     customFields?: Record<string, unknown>;
+    companyId?: string;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface Company {
+    _id?: string;
+    workspaceId: string;
+    name: string;
+    industry?: string;
+    website?: string;
+    phone?: string;
+    address?: {
+        street?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        postalCode?: string;
+    };
+    companySize?: string;
+    annualRevenue?: number;
+    status?: 'prospect' | 'active' | 'inactive' | 'churned';
+    accountTier?: 'enterprise' | 'mid-market' | 'smb';
+    isTargetAccount?: boolean;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface Pipeline {
+    _id?: string;
+    workspaceId: string;
+    name: string;
+    description?: string;
+    stages: PipelineStage[];
+    isDefault?: boolean;
+    isActive?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PipelineStage {
+    _id?: string;
+    name: string;
+    order: number;
+    probability?: number;
+    color?: string;
+    rottenDays?: number;
+}
+
+export interface Task {
+    _id?: string;
+    workspaceId: string;
+    title: string;
+    description?: string;
+    status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    dueDate?: string;
+    reminderDate?: string;
+    completedAt?: string;
+    tags?: string[];
+    relatedContactId?: string;
+    relatedCompanyId?: string;
+    relatedOpportunityId?: string;
+    assignedTo?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface Activity {
+    _id?: string;
+    workspaceId: string;
+    type: 'call' | 'email' | 'meeting' | 'note' | 'task' | 'other';
+    title: string;
+    description?: string;
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    outcome?: string;
+    emailSubject?: string;
+    emailBody?: string;
+    metadata?: Record<string, unknown>;
+    contactId?: string;
+    companyId?: string;
+    opportunityId?: string;
+    userId?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -312,6 +402,7 @@ export interface Opportunity {
     _id?: string;
     workspaceId: string;
     contactId: string;
+    companyId?: string;
     pipelineId: string;
     stageId: string;
     title: string;
@@ -320,8 +411,10 @@ export interface Opportunity {
     probability?: number;
     expectedCloseDate?: string;
     status?: 'open' | 'won' | 'lost';
+    priority?: 'low' | 'medium' | 'high';
     lostReason?: string;
     customFields?: Record<string, unknown>;
+    assignedTo?: string;
     createdAt?: string;
     updatedAt?: string;
 }
