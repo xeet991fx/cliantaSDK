@@ -8,7 +8,8 @@
 // ============================================
 
 // components/CliantaProvider.tsx
-'use client';
+// Note: Add 'use client' directive at the top of each component file when using these examples
+// 'use client';
 
 import { useEffect, createContext, useContext, useState } from 'react';
 import { clianta, type TrackerCore, type ConsentState } from '@clianta/sdk';
@@ -111,9 +112,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 // EXAMPLE: Cookie Consent Banner
 // ============================================
 
-'use client';
-
-import { useState, useEffect } from 'react';
+// 'use client';
+// Note: Import from React at top of file. This is an example component.
+// import { useState, useEffect } from 'react';
 // import { useClianta } from '@/components/CliantaProvider';
 
 export function CookieConsentBanner() {
@@ -192,7 +193,7 @@ export function CookieConsentBanner() {
 // EXAMPLE: Track Events in Components
 // ============================================
 
-'use client';
+// 'use client';
 
 // import { useClianta } from '@/components/CliantaProvider';
 
@@ -222,7 +223,7 @@ export function SignupButton() {
 // EXAMPLE: Identify on Login
 // ============================================
 
-'use client';
+// 'use client';
 
 // import { useClianta } from '@/components/CliantaProvider';
 
