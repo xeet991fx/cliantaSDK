@@ -27,6 +27,10 @@ export class EventQueue {
     private isFlushing = false;
     /** Rate limiting: timestamps of recent events */
     private eventTimestamps: number[] = [];
+    /** Unload handler references for cleanup */
+    private boundBeforeUnload: (() => void) | null = null;
+    private boundVisibilityChange: (() => void) | null = null;
+    private boundPageHide: (() => void) | null = null;
 
     constructor(transport: Transport, config: Partial<QueueConfig> = {}) {
         this.transport = transport;
@@ -78,7 +82,7 @@ export class EventQueue {
      */
     private checkRateLimit(): boolean {
         const now = Date.now();
-        
+
         // Remove timestamps outside the window
         this.eventTimestamps = this.eventTimestamps.filter(
             ts => now - ts < RATE_LIMIT_WINDOW_MS
@@ -166,12 +170,24 @@ export class EventQueue {
     }
 
     /**
-     * Stop the flush timer
+     * Stop the flush timer and cleanup handlers
      */
     destroy(): void {
         if (this.flushTimer) {
             clearInterval(this.flushTimer);
             this.flushTimer = null;
+        }
+        // Remove unload handlers
+        if (typeof window !== 'undefined') {
+            if (this.boundBeforeUnload) {
+                window.removeEventListener('beforeunload', this.boundBeforeUnload);
+            }
+            if (this.boundVisibilityChange) {
+                window.removeEventListener('visibilitychange', this.boundVisibilityChange);
+            }
+            if (this.boundPageHide) {
+                window.removeEventListener('pagehide', this.boundPageHide);
+            }
         }
     }
 
@@ -195,21 +211,20 @@ export class EventQueue {
         if (typeof window === 'undefined') return;
 
         // Flush on page unload
-        window.addEventListener('beforeunload', () => {
-            this.flushSync();
-        });
+        this.boundBeforeUnload = () => this.flushSync();
+        window.addEventListener('beforeunload', this.boundBeforeUnload);
 
         // Flush when page becomes hidden
-        window.addEventListener('visibilitychange', () => {
+        this.boundVisibilityChange = () => {
             if (document.visibilityState === 'hidden') {
                 this.flushSync();
             }
-        });
+        };
+        window.addEventListener('visibilitychange', this.boundVisibilityChange);
 
         // Flush on page hide (iOS Safari)
-        window.addEventListener('pagehide', () => {
-            this.flushSync();
-        });
+        this.boundPageHide = () => this.flushSync();
+        window.addEventListener('pagehide', this.boundPageHide);
     }
 
     /**

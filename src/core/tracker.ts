@@ -42,6 +42,8 @@ export class Tracker implements TrackerCore {
     private sessionId: string;
     private isInitialized = false;
     private consentManager: ConsentManager;
+    /** Pending identify retry on next flush */
+    private pendingIdentify: { email: string; traits: UserTraits } | null = null;
 
     constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
         if (!workspaceId) {
@@ -196,7 +198,7 @@ export class Tracker implements TrackerCore {
             referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
             properties,
             device: getDeviceInfo(),
-            utm: getUTMParams() as TrackingEvent['utm'],
+            ...getUTMParams(),
             timestamp: new Date().toISOString(),
             sdkVersion: SDK_VERSION,
         };
@@ -248,9 +250,22 @@ export class Tracker implements TrackerCore {
 
         if (result.success) {
             logger.info('Visitor identified successfully');
+            this.pendingIdentify = null;
         } else {
             logger.error('Failed to identify visitor:', result.error);
+            // Store for retry on next flush
+            this.pendingIdentify = { email, traits };
         }
+    }
+
+    /**
+     * Retry pending identify call
+     */
+    private async retryPendingIdentify(): Promise<void> {
+        if (!this.pendingIdentify) return;
+        const { email, traits } = this.pendingIdentify;
+        this.pendingIdentify = null;
+        await this.identify(email, traits);
     }
 
     /**
@@ -307,6 +322,7 @@ export class Tracker implements TrackerCore {
      * Force flush event queue
      */
     async flush(): Promise<void> {
+        await this.retryPendingIdentify();
         await this.queue.flush();
     }
 

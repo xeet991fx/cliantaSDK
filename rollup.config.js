@@ -120,4 +120,46 @@ export default [
         external: ['react'],
         plugins: [dts()],
     },
+
+    // Vue integration builds (ESM, CJS)
+    {
+        input: 'src/vue.ts',
+        output: [
+            {
+                file: 'dist/vue.esm.js',
+                format: 'esm',
+                banner,
+                sourcemap: true,
+            },
+            {
+                file: 'dist/vue.cjs.js',
+                format: 'cjs',
+                banner,
+                sourcemap: true,
+                exports: 'named',
+            },
+        ],
+        external: ['vue'],
+        plugins: [
+            resolve({
+                browser: true,
+            }),
+            commonjs(),
+            typescript({
+                tsconfig: './tsconfig.json',
+                declaration: false,
+            }),
+        ],
+    },
+
+    // TypeScript declarations - vue
+    {
+        input: 'src/vue.ts',
+        output: {
+            file: 'dist/vue.d.ts',
+            format: 'es',
+        },
+        external: ['vue'],
+        plugins: [dts()],
+    },
 ];

@@ -3,15 +3,15 @@
  * @see SDK_VERSION in core/config.ts
  */
 
-import type { 
-    Contact, 
-    Company, 
-    Opportunity, 
-    Pipeline, 
-    Task, 
-    Activity, 
-    ApiResponse, 
-    PaginatedResponse 
+import type {
+    Contact,
+    Company,
+    Opportunity,
+    Pipeline,
+    Task,
+    Activity,
+    ApiResponse,
+    PaginatedResponse
 } from '../types';
 
 /**
@@ -33,6 +33,16 @@ export class CRMClient {
      */
     setAuthToken(token: string): void {
         this.authToken = token;
+    }
+
+    /**
+     * Validate required parameter exists
+     * @throws {Error} if value is null/undefined or empty string
+     */
+    private validateRequired(param: string, value: unknown, methodName: string): void {
+        if (value === null || value === undefined || value === '') {
+            throw new Error(`[CRMClient.${methodName}] ${param} is required`);
+        }
     }
 
     /**
@@ -111,6 +121,7 @@ export class CRMClient {
      * Get a single contact by ID
      */
     async getContact(contactId: string): Promise<ApiResponse<Contact>> {
+        this.validateRequired('contactId', contactId, 'getContact');
         return this.request<Contact>(
             `/api/workspaces/${this.workspaceId}/contacts/${contactId}`
         );
@@ -136,6 +147,7 @@ export class CRMClient {
         contactId: string,
         updates: Partial<Contact>
     ): Promise<ApiResponse<Contact>> {
+        this.validateRequired('contactId', contactId, 'updateContact');
         return this.request<Contact>(
             `/api/workspaces/${this.workspaceId}/contacts/${contactId}`,
             {
@@ -149,6 +161,7 @@ export class CRMClient {
      * Delete a contact
      */
     async deleteContact(contactId: string): Promise<ApiResponse<void>> {
+        this.validateRequired('contactId', contactId, 'deleteContact');
         return this.request<void>(
             `/api/workspaces/${this.workspaceId}/contacts/${contactId}`,
             {

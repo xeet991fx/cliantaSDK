@@ -11,17 +11,35 @@ import { BasePlugin } from './base';
  */
 export class PerformancePlugin extends BasePlugin {
     name: PluginName = 'performance';
+    private boundLoadHandler: (() => void) | null = null;
+    private observers: PerformanceObserver[] = [];
+    private boundClsVisibilityHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
 
         if (typeof window !== 'undefined') {
             // Track performance after page load
-            window.addEventListener('load', () => {
+            this.boundLoadHandler = () => {
                 // Delay to ensure all metrics are available
                 setTimeout(() => this.trackPerformance(), 100);
-            });
+            };
+            window.addEventListener('load', this.boundLoadHandler);
         }
+    }
+
+    destroy(): void {
+        if (this.boundLoadHandler && typeof window !== 'undefined') {
+            window.removeEventListener('load', this.boundLoadHandler);
+        }
+        for (const observer of this.observers) {
+            observer.disconnect();
+        }
+        this.observers = [];
+        if (this.boundClsVisibilityHandler && typeof window !== 'undefined') {
+            window.removeEventListener('visibilitychange', this.boundClsVisibilityHandler);
+        }
+        super.destroy();
     }
 
     private trackPerformance(): void {
@@ -29,10 +47,10 @@ export class PerformancePlugin extends BasePlugin {
 
         // Use modern Navigation Timing API (PerformanceNavigationTiming)
         const entries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
-        
+
         if (entries.length > 0) {
             const navTiming = entries[0];
-            
+
             const loadTime = Math.round(navTiming.loadEventEnd - navTiming.startTime);
             const domReady = Math.round(navTiming.domContentLoadedEventEnd - navTiming.startTime);
             const ttfb = Math.round(navTiming.responseStart - navTiming.requestStart);
@@ -85,6 +103,7 @@ export class PerformancePlugin extends BasePlugin {
                     }
                 });
                 lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+                this.observers.push(lcpObserver);
             } catch {
                 // LCP not supported
             }
@@ -102,6 +121,7 @@ export class PerformancePlugin extends BasePlugin {
                     }
                 });
                 fidObserver.observe({ type: 'first-input', buffered: true });
+                this.observers.push(fidObserver);
             } catch {
                 // FID not supported
             }
@@ -118,16 +138,18 @@ export class PerformancePlugin extends BasePlugin {
                     });
                 });
                 clsObserver.observe({ type: 'layout-shift', buffered: true });
+                this.observers.push(clsObserver);
 
                 // Report CLS after page is hidden
-                window.addEventListener('visibilitychange', () => {
+                this.boundClsVisibilityHandler = () => {
                     if (document.visibilityState === 'hidden' && clsValue > 0) {
                         this.track('performance', 'Web Vital - CLS', {
                             metric: 'CLS',
                             value: Math.round(clsValue * 1000) / 1000,
                         });
                     }
-                }, { once: true });
+                };
+                window.addEventListener('visibilitychange', this.boundClsVisibilityHandler, { once: true });
             } catch {
                 // CLS not supported
             }

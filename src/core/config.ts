@@ -42,7 +42,6 @@ export const DEFAULT_PLUGINS: PluginName[] = [
     'engagement',
     'downloads',
     'exitIntent',
-    'popupForms',
 ];
 
 /** Default configuration values */

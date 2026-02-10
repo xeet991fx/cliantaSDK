@@ -17,6 +17,7 @@ export class EngagementPlugin extends BasePlugin {
     private engagementTimeout: ReturnType<typeof setTimeout> | null = null;
     private boundMarkEngaged: (() => void) | null = null;
     private boundTrackTimeOnPage: (() => void) | null = null;
+    private boundVisibilityHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -28,6 +29,14 @@ export class EngagementPlugin extends BasePlugin {
         // Setup engagement detection
         this.boundMarkEngaged = this.markEngaged.bind(this);
         this.boundTrackTimeOnPage = this.trackTimeOnPage.bind(this);
+        this.boundVisibilityHandler = () => {
+            if (document.visibilityState === 'hidden') {
+                this.trackTimeOnPage();
+            } else {
+                // Reset engagement timer when page becomes visible again
+                this.engagementStartTime = Date.now();
+            }
+        };
 
         ['mousemove', 'keydown', 'touchstart', 'scroll'].forEach((event) => {
             document.addEventListener(event, this.boundMarkEngaged!, { passive: true });
@@ -35,14 +44,7 @@ export class EngagementPlugin extends BasePlugin {
 
         // Track time on page before unload
         window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
-        window.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') {
-                this.trackTimeOnPage();
-            } else {
-                // Reset engagement timer when page becomes visible again
-                this.engagementStartTime = Date.now();
-            }
-        });
+        document.addEventListener('visibilitychange', this.boundVisibilityHandler);
     }
 
     destroy(): void {
@@ -53,6 +55,9 @@ export class EngagementPlugin extends BasePlugin {
         }
         if (this.boundTrackTimeOnPage && typeof window !== 'undefined') {
             window.removeEventListener('beforeunload', this.boundTrackTimeOnPage);
+        }
+        if (this.boundVisibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
         }
         if (this.engagementTimeout) {
             clearTimeout(this.engagementTimeout);

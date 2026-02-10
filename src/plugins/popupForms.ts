@@ -383,7 +383,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
                 fieldWrapper.appendChild(label);
 
-                // Input/Textarea
+                // Input/Textarea/Select
                 if (field.type === 'textarea') {
                     const textarea = document.createElement('textarea');
                     textarea.name = field.name;
@@ -391,6 +391,38 @@ export class PopupFormsPlugin extends BasePlugin {
                     if (field.required) textarea.required = true;
                     textarea.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px; box-sizing: border-box;';
                     fieldWrapper.appendChild(textarea);
+                } else if (field.type === 'select') {
+                    const select = document.createElement('select');
+                    select.name = field.name;
+                    if (field.required) select.required = true;
+                    select.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box; background: white; cursor: pointer;';
+
+                    // Add placeholder option
+                    if (field.placeholder) {
+                        const placeholderOption = document.createElement('option');
+                        placeholderOption.value = '';
+                        placeholderOption.textContent = field.placeholder;
+                        placeholderOption.disabled = true;
+                        placeholderOption.selected = true;
+                        select.appendChild(placeholderOption);
+                    }
+
+                    // Add options from field.options array if provided
+                    if (field.options && Array.isArray(field.options)) {
+                        field.options.forEach((opt: string | { label: string; value: string }) => {
+                            const option = document.createElement('option');
+                            if (typeof opt === 'string') {
+                                option.value = opt;
+                                option.textContent = opt;
+                            } else {
+                                option.value = opt.value;
+                                option.textContent = opt.label;
+                            }
+                            select.appendChild(option);
+                        });
+                    }
+
+                    fieldWrapper.appendChild(select);
                 } else {
                     const input = document.createElement('input');
                     input.type = field.type;
@@ -424,98 +456,6 @@ export class PopupFormsPlugin extends BasePlugin {
         formElement.appendChild(submitBtn);
 
         container.appendChild(formElement);
-    }
-
-    private buildFormHTML(form: LeadForm): string {
-        const style = form.style || {};
-        const primaryColor = style.primaryColor || '#10B981';
-        const textColor = style.textColor || '#18181B';
-
-        let fieldsHTML = form.fields.map(field => {
-            const requiredMark = field.required ? '<span style="color: #EF4444;">*</span>' : '';
-
-            if (field.type === 'textarea') {
-                return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
-                            ${field.label} ${requiredMark}
-                        </label>
-                        <textarea
-                            name="${field.name}"
-                            placeholder="${field.placeholder || ''}"
-                            ${field.required ? 'required' : ''}
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px;"
-                        ></textarea>
-                    </div>
-                `;
-            } else if (field.type === 'checkbox') {
-                return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: ${textColor}; cursor: pointer;">
-                            <input
-                                type="checkbox"
-                                name="${field.name}"
-                                ${field.required ? 'required' : ''}
-                                style="width: 16px; height: 16px;"
-                            />
-                            ${field.label} ${requiredMark}
-                        </label>
-                    </div>
-                `;
-            } else {
-                return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
-                            ${field.label} ${requiredMark}
-                        </label>
-                        <input
-                            type="${field.type}"
-                            name="${field.name}"
-                            placeholder="${field.placeholder || ''}"
-                            ${field.required ? 'required' : ''}
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
-                        />
-                    </div>
-                `;
-            }
-        }).join('');
-
-        return `
-            <button id="clianta-form-close" style="
-                position: absolute;
-                top: 12px;
-                right: 12px;
-                background: none;
-                border: none;
-                font-size: 20px;
-                cursor: pointer;
-                color: #71717A;
-                padding: 4px;
-            ">&times;</button>
-            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; color: ${textColor};">
-                ${form.headline || 'Stay in touch'}
-            </h2>
-            <p style="font-size: 14px; color: #71717A; margin-bottom: 16px;">
-                ${form.subheadline || 'Get the latest updates'}
-            </p>
-            <form id="clianta-form-element">
-                ${fieldsHTML}
-                <button type="submit" style="
-                    width: 100%;
-                    padding: 10px 16px;
-                    background: ${primaryColor};
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    margin-top: 8px;
-                ">
-                    ${form.submitButtonText || 'Subscribe'}
-                </button>
-            </form>
-        `;
     }
 
     private setupFormEvents(form: LeadForm, overlay: HTMLElement, container: HTMLElement): void {
@@ -589,13 +529,13 @@ export class PopupFormsPlugin extends BasePlugin {
             if (result.success) {
                 // Show success message using safe DOM APIs
                 container.innerHTML = '';
-                
+
                 const successWrapper = document.createElement('div');
                 successWrapper.style.cssText = 'text-align: center; padding: 20px;';
-                
+
                 const iconWrapper = document.createElement('div');
                 iconWrapper.style.cssText = 'width: 48px; height: 48px; background: #10B981; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;';
-                
+
                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.setAttribute('width', '24');
                 svg.setAttribute('height', '24');
@@ -603,16 +543,16 @@ export class PopupFormsPlugin extends BasePlugin {
                 svg.setAttribute('fill', 'none');
                 svg.setAttribute('stroke', 'white');
                 svg.setAttribute('stroke-width', '2');
-                
+
                 const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
                 polyline.setAttribute('points', '20 6 9 17 4 12');
                 svg.appendChild(polyline);
                 iconWrapper.appendChild(svg);
-                
+
                 const message = document.createElement('p');
                 message.style.cssText = 'font-size: 16px; font-weight: 500; color: #18181B;';
                 message.textContent = form.successMessage || 'Thank you!';
-                
+
                 successWrapper.appendChild(iconWrapper);
                 successWrapper.appendChild(message);
                 container.appendChild(successWrapper);

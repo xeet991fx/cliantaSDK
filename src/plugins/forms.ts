@@ -14,6 +14,7 @@ export class FormsPlugin extends BasePlugin {
     private trackedForms: WeakSet<HTMLFormElement> = new WeakSet();
     private formInteractions: Set<string> = new Set();
     private observer: MutationObserver | null = null;
+    private listeners: { element: EventTarget; event: string; handler: EventListener }[] = [];
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -35,7 +36,20 @@ export class FormsPlugin extends BasePlugin {
             this.observer.disconnect();
             this.observer = null;
         }
+        // Remove all tracked event listeners
+        for (const { element, event, handler } of this.listeners) {
+            element.removeEventListener(event, handler);
+        }
+        this.listeners = [];
         super.destroy();
+    }
+
+    /**
+     * Track event listener for cleanup
+     */
+    private addListener(element: EventTarget, event: string, handler: EventListener): void {
+        element.addEventListener(event, handler);
+        this.listeners.push({ element, event, handler });
     }
 
     private trackAllForms(): void {
@@ -66,7 +80,7 @@ export class FormsPlugin extends BasePlugin {
                 if (!field.name || field.type === 'submit' || field.type === 'button') return;
 
                 ['focus', 'blur', 'change'].forEach((eventType) => {
-                    field.addEventListener(eventType, () => {
+                    const handler = () => {
                         const key = `${formId}-${field.name}-${eventType}`;
                         if (!this.formInteractions.has(key)) {
                             this.formInteractions.add(key);
@@ -77,13 +91,14 @@ export class FormsPlugin extends BasePlugin {
                                 interactionType: eventType,
                             });
                         }
-                    });
+                    };
+                    this.addListener(field, eventType, handler);
                 });
             }
         });
 
         // Track form submission
-        form.addEventListener('submit', () => {
+        const submitHandler = () => {
             this.track('form_submit', 'Form Submitted', {
                 formId,
                 action: form.action,
@@ -92,7 +107,8 @@ export class FormsPlugin extends BasePlugin {
 
             // Auto-identify if email field found
             this.autoIdentify(form);
-        });
+        };
+        this.addListener(form, 'submit', submitHandler);
     }
 
     private autoIdentify(form: HTMLFormElement): void {

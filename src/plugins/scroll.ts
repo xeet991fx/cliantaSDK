@@ -17,6 +17,10 @@ export class ScrollPlugin extends BasePlugin {
     private pageLoadTime = 0;
     private scrollTimeout: ReturnType<typeof setTimeout> | null = null;
     private boundHandler: (() => void) | null = null;
+    /** SPA navigation support */
+    private originalPushState: typeof history.pushState | null = null;
+    private originalReplaceState: typeof history.replaceState | null = null;
+    private popstateHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -25,6 +29,9 @@ export class ScrollPlugin extends BasePlugin {
         if (typeof window !== 'undefined') {
             this.boundHandler = this.handleScroll.bind(this);
             window.addEventListener('scroll', this.boundHandler, { passive: true });
+
+            // Setup SPA navigation reset
+            this.setupNavigationReset();
         }
     }
 
@@ -35,7 +42,57 @@ export class ScrollPlugin extends BasePlugin {
         if (this.scrollTimeout) {
             clearTimeout(this.scrollTimeout);
         }
+        // Restore original history methods
+        if (this.originalPushState) {
+            history.pushState = this.originalPushState;
+            this.originalPushState = null;
+        }
+        if (this.originalReplaceState) {
+            history.replaceState = this.originalReplaceState;
+            this.originalReplaceState = null;
+        }
+        // Remove popstate listener
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
         super.destroy();
+    }
+
+    /**
+     * Reset scroll tracking for SPA navigation
+     */
+    private resetForNavigation(): void {
+        this.milestonesReached.clear();
+        this.maxScrollDepth = 0;
+        this.pageLoadTime = Date.now();
+    }
+
+    /**
+     * Setup History API interception for SPA navigation
+     */
+    private setupNavigationReset(): void {
+        if (typeof window === 'undefined') return;
+
+        // Store originals for cleanup
+        this.originalPushState = history.pushState;
+        this.originalReplaceState = history.replaceState;
+
+        // Intercept pushState and replaceState
+        const self = this;
+        history.pushState = function (...args) {
+            self.originalPushState!.apply(history, args);
+            self.resetForNavigation();
+        };
+
+        history.replaceState = function (...args) {
+            self.originalReplaceState!.apply(history, args);
+            self.resetForNavigation();
+        };
+
+        // Handle back/forward navigation
+        this.popstateHandler = () => this.resetForNavigation();
+        window.addEventListener('popstate', this.popstateHandler);
     }
 
     private handleScroll(): void {
