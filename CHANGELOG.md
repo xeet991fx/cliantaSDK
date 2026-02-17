@@ -5,6 +5,23 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-17
+
+### Added
+- **ContactUpdateAction Type** - New trigger action type for automatically updating contact fields when triggers fire
+  - Supports partial contact updates via `updates: Partial<Contact>`
+- **TriggerExecution Interface** - Full execution tracking for event triggers
+  - Fields: `triggerId`, `eventType`, `entityId`, `status`, `error`, `actionsExecuted`, `executedAt`
+  - Status tracking: `pending`, `success`, `failed`
+- **deleteEventTrigger()** - New CRM client method to delete event triggers by ID
+  - `crm.deleteEventTrigger(triggerId)` - removes a trigger from the workspace
+- **Vue Type Augmentation** - Added `ComponentCustomProperties` declaration for `$clianta` global property
+  - Enables type-safe access to tracker via Options API in Vue components
+- **Export: ContactUpdateAction** - Now exported from main SDK entry point
+
+### Changed
+- `TriggerAction` union type now includes `ContactUpdateAction` alongside `EmailAction`, `WebhookAction`, and `TaskAction`
+
 ## [1.2.0] - 2026-02-02
 
 ### Added

@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.2.0
+ * Clianta SDK v1.3.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -14,7 +14,7 @@
      * @see SDK_VERSION in core/config.ts
      */
     /** SDK Version */
-    const SDK_VERSION = '1.2.0';
+    const SDK_VERSION = '1.3.0';
     /** Default API endpoint based on environment */
     const getDefaultApiEndpoint = () => {
         if (typeof window === 'undefined')
@@ -34,7 +34,6 @@
         'engagement',
         'downloads',
         'exitIntent',
-        'popupForms',
     ];
     /** Default configuration values */
     const DEFAULT_CONFIG = {
@@ -592,6 +591,10 @@
             this.isFlushing = false;
             /** Rate limiting: timestamps of recent events */
             this.eventTimestamps = [];
+            /** Unload handler references for cleanup */
+            this.boundBeforeUnload = null;
+            this.boundVisibilityChange = null;
+            this.boundPageHide = null;
             this.transport = transport;
             this.config = {
                 batchSize: config.batchSize ?? 10,
@@ -706,12 +709,24 @@
             this.persistQueue([]);
         }
         /**
-         * Stop the flush timer
+         * Stop the flush timer and cleanup handlers
          */
         destroy() {
             if (this.flushTimer) {
                 clearInterval(this.flushTimer);
                 this.flushTimer = null;
+            }
+            // Remove unload handlers
+            if (typeof window !== 'undefined') {
+                if (this.boundBeforeUnload) {
+                    window.removeEventListener('beforeunload', this.boundBeforeUnload);
+                }
+                if (this.boundVisibilityChange) {
+                    window.removeEventListener('visibilitychange', this.boundVisibilityChange);
+                }
+                if (this.boundPageHide) {
+                    window.removeEventListener('pagehide', this.boundPageHide);
+                }
             }
         }
         /**
@@ -732,19 +747,18 @@
             if (typeof window === 'undefined')
                 return;
             // Flush on page unload
-            window.addEventListener('beforeunload', () => {
-                this.flushSync();
-            });
+            this.boundBeforeUnload = () => this.flushSync();
+            window.addEventListener('beforeunload', this.boundBeforeUnload);
             // Flush when page becomes hidden
-            window.addEventListener('visibilitychange', () => {
+            this.boundVisibilityChange = () => {
                 if (document.visibilityState === 'hidden') {
                     this.flushSync();
                 }
-            });
+            };
+            window.addEventListener('visibilitychange', this.boundVisibilityChange);
             // Flush on page hide (iOS Safari)
-            window.addEventListener('pagehide', () => {
-                this.flushSync();
-            });
+            this.boundPageHide = () => this.flushSync();
+            window.addEventListener('pagehide', this.boundPageHide);
         }
         /**
          * Persist queue to localStorage
@@ -887,6 +901,10 @@
             this.pageLoadTime = 0;
             this.scrollTimeout = null;
             this.boundHandler = null;
+            /** SPA navigation support */
+            this.originalPushState = null;
+            this.originalReplaceState = null;
+            this.popstateHandler = null;
         }
         init(tracker) {
             super.init(tracker);
@@ -894,6 +912,8 @@
             if (typeof window !== 'undefined') {
                 this.boundHandler = this.handleScroll.bind(this);
                 window.addEventListener('scroll', this.boundHandler, { passive: true });
+                // Setup SPA navigation reset
+                this.setupNavigationReset();
             }
         }
         destroy() {
@@ -903,7 +923,52 @@
             if (this.scrollTimeout) {
                 clearTimeout(this.scrollTimeout);
             }
+            // Restore original history methods
+            if (this.originalPushState) {
+                history.pushState = this.originalPushState;
+                this.originalPushState = null;
+            }
+            if (this.originalReplaceState) {
+                history.replaceState = this.originalReplaceState;
+                this.originalReplaceState = null;
+            }
+            // Remove popstate listener
+            if (this.popstateHandler && typeof window !== 'undefined') {
+                window.removeEventListener('popstate', this.popstateHandler);
+                this.popstateHandler = null;
+            }
             super.destroy();
+        }
+        /**
+         * Reset scroll tracking for SPA navigation
+         */
+        resetForNavigation() {
+            this.milestonesReached.clear();
+            this.maxScrollDepth = 0;
+            this.pageLoadTime = Date.now();
+        }
+        /**
+         * Setup History API interception for SPA navigation
+         */
+        setupNavigationReset() {
+            if (typeof window === 'undefined')
+                return;
+            // Store originals for cleanup
+            this.originalPushState = history.pushState;
+            this.originalReplaceState = history.replaceState;
+            // Intercept pushState and replaceState
+            const self = this;
+            history.pushState = function (...args) {
+                self.originalPushState.apply(history, args);
+                self.resetForNavigation();
+            };
+            history.replaceState = function (...args) {
+                self.originalReplaceState.apply(history, args);
+                self.resetForNavigation();
+            };
+            // Handle back/forward navigation
+            this.popstateHandler = () => this.resetForNavigation();
+            window.addEventListener('popstate', this.popstateHandler);
         }
         handleScroll() {
             // Debounce scroll tracking
@@ -957,6 +1022,7 @@
             this.trackedForms = new WeakSet();
             this.formInteractions = new Set();
             this.observer = null;
+            this.listeners = [];
         }
         init(tracker) {
             super.init(tracker);
@@ -975,7 +1041,19 @@
                 this.observer.disconnect();
                 this.observer = null;
             }
+            // Remove all tracked event listeners
+            for (const { element, event, handler } of this.listeners) {
+                element.removeEventListener(event, handler);
+            }
+            this.listeners = [];
             super.destroy();
+        }
+        /**
+         * Track event listener for cleanup
+         */
+        addListener(element, event, handler) {
+            element.addEventListener(event, handler);
+            this.listeners.push({ element, event, handler });
         }
         trackAllForms() {
             document.querySelectorAll('form').forEach((form) => {
@@ -1002,7 +1080,7 @@
                     if (!field.name || field.type === 'submit' || field.type === 'button')
                         return;
                     ['focus', 'blur', 'change'].forEach((eventType) => {
-                        field.addEventListener(eventType, () => {
+                        const handler = () => {
                             const key = `${formId}-${field.name}-${eventType}`;
                             if (!this.formInteractions.has(key)) {
                                 this.formInteractions.add(key);
@@ -1013,12 +1091,13 @@
                                     interactionType: eventType,
                                 });
                             }
-                        });
+                        };
+                        this.addListener(field, eventType, handler);
                     });
                 }
             });
             // Track form submission
-            form.addEventListener('submit', () => {
+            const submitHandler = () => {
                 this.track('form_submit', 'Form Submitted', {
                     formId,
                     action: form.action,
@@ -1026,7 +1105,8 @@
                 });
                 // Auto-identify if email field found
                 this.autoIdentify(form);
-            });
+            };
+            this.addListener(form, 'submit', submitHandler);
         }
         autoIdentify(form) {
             const emailField = form.querySelector('input[type="email"], input[name*="email"]');
@@ -1110,6 +1190,7 @@
             this.engagementTimeout = null;
             this.boundMarkEngaged = null;
             this.boundTrackTimeOnPage = null;
+            this.boundVisibilityHandler = null;
         }
         init(tracker) {
             super.init(tracker);
@@ -1120,12 +1201,7 @@
             // Setup engagement detection
             this.boundMarkEngaged = this.markEngaged.bind(this);
             this.boundTrackTimeOnPage = this.trackTimeOnPage.bind(this);
-            ['mousemove', 'keydown', 'touchstart', 'scroll'].forEach((event) => {
-                document.addEventListener(event, this.boundMarkEngaged, { passive: true });
-            });
-            // Track time on page before unload
-            window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
-            window.addEventListener('visibilitychange', () => {
+            this.boundVisibilityHandler = () => {
                 if (document.visibilityState === 'hidden') {
                     this.trackTimeOnPage();
                 }
@@ -1133,7 +1209,13 @@
                     // Reset engagement timer when page becomes visible again
                     this.engagementStartTime = Date.now();
                 }
+            };
+            ['mousemove', 'keydown', 'touchstart', 'scroll'].forEach((event) => {
+                document.addEventListener(event, this.boundMarkEngaged, { passive: true });
             });
+            // Track time on page before unload
+            window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
+            document.addEventListener('visibilitychange', this.boundVisibilityHandler);
         }
         destroy() {
             if (this.boundMarkEngaged && typeof document !== 'undefined') {
@@ -1143,6 +1225,9 @@
             }
             if (this.boundTrackTimeOnPage && typeof window !== 'undefined') {
                 window.removeEventListener('beforeunload', this.boundTrackTimeOnPage);
+            }
+            if (this.boundVisibilityHandler && typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
             }
             if (this.engagementTimeout) {
                 clearTimeout(this.engagementTimeout);
@@ -1188,19 +1273,68 @@
             this.name = 'downloads';
             this.trackedDownloads = new Set();
             this.boundHandler = null;
+            /** SPA navigation support */
+            this.originalPushState = null;
+            this.originalReplaceState = null;
+            this.popstateHandler = null;
         }
         init(tracker) {
             super.init(tracker);
             if (typeof document !== 'undefined') {
                 this.boundHandler = this.handleClick.bind(this);
                 document.addEventListener('click', this.boundHandler, true);
+                // Setup SPA navigation reset
+                this.setupNavigationReset();
             }
         }
         destroy() {
             if (this.boundHandler && typeof document !== 'undefined') {
                 document.removeEventListener('click', this.boundHandler, true);
             }
+            // Restore original history methods
+            if (this.originalPushState) {
+                history.pushState = this.originalPushState;
+                this.originalPushState = null;
+            }
+            if (this.originalReplaceState) {
+                history.replaceState = this.originalReplaceState;
+                this.originalReplaceState = null;
+            }
+            // Remove popstate listener
+            if (this.popstateHandler && typeof window !== 'undefined') {
+                window.removeEventListener('popstate', this.popstateHandler);
+                this.popstateHandler = null;
+            }
             super.destroy();
+        }
+        /**
+         * Reset download tracking for SPA navigation
+         */
+        resetForNavigation() {
+            this.trackedDownloads.clear();
+        }
+        /**
+         * Setup History API interception for SPA navigation
+         */
+        setupNavigationReset() {
+            if (typeof window === 'undefined')
+                return;
+            // Store originals for cleanup
+            this.originalPushState = history.pushState;
+            this.originalReplaceState = history.replaceState;
+            // Intercept pushState and replaceState
+            const self = this;
+            history.pushState = function (...args) {
+                self.originalPushState.apply(history, args);
+                self.resetForNavigation();
+            };
+            history.replaceState = function (...args) {
+                self.originalReplaceState.apply(history, args);
+                self.resetForNavigation();
+            };
+            // Handle back/forward navigation
+            this.popstateHandler = () => this.resetForNavigation();
+            window.addEventListener('popstate', this.popstateHandler);
         }
         handleClick(e) {
             const link = e.target.closest('a');
@@ -1327,16 +1461,33 @@
         constructor() {
             super(...arguments);
             this.name = 'performance';
+            this.boundLoadHandler = null;
+            this.observers = [];
+            this.boundClsVisibilityHandler = null;
         }
         init(tracker) {
             super.init(tracker);
             if (typeof window !== 'undefined') {
                 // Track performance after page load
-                window.addEventListener('load', () => {
+                this.boundLoadHandler = () => {
                     // Delay to ensure all metrics are available
                     setTimeout(() => this.trackPerformance(), 100);
-                });
+                };
+                window.addEventListener('load', this.boundLoadHandler);
             }
+        }
+        destroy() {
+            if (this.boundLoadHandler && typeof window !== 'undefined') {
+                window.removeEventListener('load', this.boundLoadHandler);
+            }
+            for (const observer of this.observers) {
+                observer.disconnect();
+            }
+            this.observers = [];
+            if (this.boundClsVisibilityHandler && typeof window !== 'undefined') {
+                window.removeEventListener('visibilitychange', this.boundClsVisibilityHandler);
+            }
+            super.destroy();
         }
         trackPerformance() {
             if (typeof performance === 'undefined')
@@ -1394,6 +1545,7 @@
                         }
                     });
                     lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+                    this.observers.push(lcpObserver);
                 }
                 catch {
                     // LCP not supported
@@ -1411,6 +1563,7 @@
                         }
                     });
                     fidObserver.observe({ type: 'first-input', buffered: true });
+                    this.observers.push(fidObserver);
                 }
                 catch {
                     // FID not supported
@@ -1427,15 +1580,17 @@
                         });
                     });
                     clsObserver.observe({ type: 'layout-shift', buffered: true });
+                    this.observers.push(clsObserver);
                     // Report CLS after page is hidden
-                    window.addEventListener('visibilitychange', () => {
+                    this.boundClsVisibilityHandler = () => {
                         if (document.visibilityState === 'hidden' && clsValue > 0) {
                             this.track('performance', 'Web Vital - CLS', {
                                 metric: 'CLS',
                                 value: Math.round(clsValue * 1000) / 1000,
                             });
                         }
-                    }, { once: true });
+                    };
+                    window.addEventListener('visibilitychange', this.boundClsVisibilityHandler, { once: true });
                 }
                 catch {
                     // CLS not supported
@@ -1746,7 +1901,7 @@
                         label.appendChild(requiredMark);
                     }
                     fieldWrapper.appendChild(label);
-                    // Input/Textarea
+                    // Input/Textarea/Select
                     if (field.type === 'textarea') {
                         const textarea = document.createElement('textarea');
                         textarea.name = field.name;
@@ -1756,6 +1911,38 @@
                             textarea.required = true;
                         textarea.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px; box-sizing: border-box;';
                         fieldWrapper.appendChild(textarea);
+                    }
+                    else if (field.type === 'select') {
+                        const select = document.createElement('select');
+                        select.name = field.name;
+                        if (field.required)
+                            select.required = true;
+                        select.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box; background: white; cursor: pointer;';
+                        // Add placeholder option
+                        if (field.placeholder) {
+                            const placeholderOption = document.createElement('option');
+                            placeholderOption.value = '';
+                            placeholderOption.textContent = field.placeholder;
+                            placeholderOption.disabled = true;
+                            placeholderOption.selected = true;
+                            select.appendChild(placeholderOption);
+                        }
+                        // Add options from field.options array if provided
+                        if (field.options && Array.isArray(field.options)) {
+                            field.options.forEach((opt) => {
+                                const option = document.createElement('option');
+                                if (typeof opt === 'string') {
+                                    option.value = opt;
+                                    option.textContent = opt;
+                                }
+                                else {
+                                    option.value = opt.value;
+                                    option.textContent = opt.label;
+                                }
+                                select.appendChild(option);
+                            });
+                        }
+                        fieldWrapper.appendChild(select);
                     }
                     else {
                         const input = document.createElement('input');
@@ -1789,96 +1976,6 @@
             submitBtn.textContent = form.submitButtonText || 'Subscribe';
             formElement.appendChild(submitBtn);
             container.appendChild(formElement);
-        }
-        buildFormHTML(form) {
-            const style = form.style || {};
-            const primaryColor = style.primaryColor || '#10B981';
-            const textColor = style.textColor || '#18181B';
-            let fieldsHTML = form.fields.map(field => {
-                const requiredMark = field.required ? '<span style="color: #EF4444;">*</span>' : '';
-                if (field.type === 'textarea') {
-                    return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
-                            ${field.label} ${requiredMark}
-                        </label>
-                        <textarea
-                            name="${field.name}"
-                            placeholder="${field.placeholder || ''}"
-                            ${field.required ? 'required' : ''}
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; resize: vertical; min-height: 80px;"
-                        ></textarea>
-                    </div>
-                `;
-                }
-                else if (field.type === 'checkbox') {
-                    return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: ${textColor}; cursor: pointer;">
-                            <input
-                                type="checkbox"
-                                name="${field.name}"
-                                ${field.required ? 'required' : ''}
-                                style="width: 16px; height: 16px;"
-                            />
-                            ${field.label} ${requiredMark}
-                        </label>
-                    </div>
-                `;
-                }
-                else {
-                    return `
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: ${textColor};">
-                            ${field.label} ${requiredMark}
-                        </label>
-                        <input
-                            type="${field.type}"
-                            name="${field.name}"
-                            placeholder="${field.placeholder || ''}"
-                            ${field.required ? 'required' : ''}
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #E4E4E7; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
-                        />
-                    </div>
-                `;
-                }
-            }).join('');
-            return `
-            <button id="clianta-form-close" style="
-                position: absolute;
-                top: 12px;
-                right: 12px;
-                background: none;
-                border: none;
-                font-size: 20px;
-                cursor: pointer;
-                color: #71717A;
-                padding: 4px;
-            ">&times;</button>
-            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; color: ${textColor};">
-                ${form.headline || 'Stay in touch'}
-            </h2>
-            <p style="font-size: 14px; color: #71717A; margin-bottom: 16px;">
-                ${form.subheadline || 'Get the latest updates'}
-            </p>
-            <form id="clianta-form-element">
-                ${fieldsHTML}
-                <button type="submit" style="
-                    width: 100%;
-                    padding: 10px 16px;
-                    background: ${primaryColor};
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    margin-top: 8px;
-                ">
-                    ${form.submitButtonText || 'Subscribe'}
-                </button>
-            </form>
-        `;
         }
         setupFormEvents(form, overlay, container) {
             // Close button
@@ -2280,6 +2377,8 @@
         constructor(workspaceId, userConfig = {}) {
             this.plugins = [];
             this.isInitialized = false;
+            /** Pending identify retry on next flush */
+            this.pendingIdentify = null;
             if (!workspaceId) {
                 throw new Error('[Clianta] Workspace ID is required');
             }
@@ -2409,7 +2508,7 @@
                 referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
                 properties,
                 device: getDeviceInfo(),
-                utm: getUTMParams(),
+                ...getUTMParams(),
                 timestamp: new Date().toISOString(),
                 sdkVersion: SDK_VERSION,
             };
@@ -2454,10 +2553,23 @@
             });
             if (result.success) {
                 logger.info('Visitor identified successfully');
+                this.pendingIdentify = null;
             }
             else {
                 logger.error('Failed to identify visitor:', result.error);
+                // Store for retry on next flush
+                this.pendingIdentify = { email, traits };
             }
+        }
+        /**
+         * Retry pending identify call
+         */
+        async retryPendingIdentify() {
+            if (!this.pendingIdentify)
+                return;
+            const { email, traits } = this.pendingIdentify;
+            this.pendingIdentify = null;
+            await this.identify(email, traits);
         }
         /**
          * Update consent state
@@ -2506,6 +2618,7 @@
          * Force flush event queue
          */
         async flush() {
+            await this.retryPendingIdentify();
             await this.queue.flush();
         }
         /**
@@ -2578,6 +2691,440 @@
     }
 
     /**
+     * Clianta SDK - Event Triggers Manager
+     * Manages event-driven automation and email notifications
+     */
+    /**
+     * Event Triggers Manager
+     * Handles event-driven automation based on CRM actions
+     *
+     * Similar to:
+     * - Salesforce: Process Builder, Flow Automation
+     * - HubSpot: Workflows, Email Sequences
+     * - Pipedrive: Workflow Automation
+     */
+    class EventTriggersManager {
+        constructor(apiEndpoint, workspaceId, authToken) {
+            this.triggers = new Map();
+            this.listeners = new Map();
+            this.apiEndpoint = apiEndpoint;
+            this.workspaceId = workspaceId;
+            this.authToken = authToken;
+        }
+        /**
+         * Set authentication token
+         */
+        setAuthToken(token) {
+            this.authToken = token;
+        }
+        /**
+         * Make authenticated API request
+         */
+        async request(endpoint, options = {}) {
+            const url = `${this.apiEndpoint}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+            };
+            if (this.authToken) {
+                headers['Authorization'] = `Bearer ${this.authToken}`;
+            }
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers,
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    return {
+                        success: false,
+                        error: data.message || 'Request failed',
+                        status: response.status,
+                    };
+                }
+                return {
+                    success: true,
+                    data: data.data || data,
+                    status: response.status,
+                };
+            }
+            catch (error) {
+                return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Network error',
+                    status: 0,
+                };
+            }
+        }
+        // ============================================
+        // TRIGGER MANAGEMENT
+        // ============================================
+        /**
+         * Get all event triggers
+         */
+        async getTriggers() {
+            return this.request(`/api/workspaces/${this.workspaceId}/triggers`);
+        }
+        /**
+         * Get a single trigger by ID
+         */
+        async getTrigger(triggerId) {
+            return this.request(`/api/workspaces/${this.workspaceId}/triggers/${triggerId}`);
+        }
+        /**
+         * Create a new event trigger
+         */
+        async createTrigger(trigger) {
+            const result = await this.request(`/api/workspaces/${this.workspaceId}/triggers`, {
+                method: 'POST',
+                body: JSON.stringify(trigger),
+            });
+            // Cache the trigger locally if successful
+            if (result.success && result.data?._id) {
+                this.triggers.set(result.data._id, result.data);
+            }
+            return result;
+        }
+        /**
+         * Update an existing trigger
+         */
+        async updateTrigger(triggerId, updates) {
+            const result = await this.request(`/api/workspaces/${this.workspaceId}/triggers/${triggerId}`, {
+                method: 'PUT',
+                body: JSON.stringify(updates),
+            });
+            // Update cache if successful
+            if (result.success && result.data?._id) {
+                this.triggers.set(result.data._id, result.data);
+            }
+            return result;
+        }
+        /**
+         * Delete a trigger
+         */
+        async deleteTrigger(triggerId) {
+            const result = await this.request(`/api/workspaces/${this.workspaceId}/triggers/${triggerId}`, {
+                method: 'DELETE',
+            });
+            // Remove from cache if successful
+            if (result.success) {
+                this.triggers.delete(triggerId);
+            }
+            return result;
+        }
+        /**
+         * Activate a trigger
+         */
+        async activateTrigger(triggerId) {
+            return this.updateTrigger(triggerId, { isActive: true });
+        }
+        /**
+         * Deactivate a trigger
+         */
+        async deactivateTrigger(triggerId) {
+            return this.updateTrigger(triggerId, { isActive: false });
+        }
+        // ============================================
+        // EVENT HANDLING (CLIENT-SIDE)
+        // ============================================
+        /**
+         * Register a local event listener for client-side triggers
+         * This allows immediate client-side reactions to events
+         */
+        on(eventType, callback) {
+            if (!this.listeners.has(eventType)) {
+                this.listeners.set(eventType, new Set());
+            }
+            this.listeners.get(eventType).add(callback);
+            logger.debug(`Event listener registered: ${eventType}`);
+        }
+        /**
+         * Remove an event listener
+         */
+        off(eventType, callback) {
+            const listeners = this.listeners.get(eventType);
+            if (listeners) {
+                listeners.delete(callback);
+            }
+        }
+        /**
+         * Emit an event (client-side only)
+         * This will trigger any registered local listeners
+         */
+        emit(eventType, data) {
+            logger.debug(`Event emitted: ${eventType}`, data);
+            const listeners = this.listeners.get(eventType);
+            if (listeners) {
+                listeners.forEach(callback => {
+                    try {
+                        callback(data);
+                    }
+                    catch (error) {
+                        logger.error(`Error in event listener for ${eventType}:`, error);
+                    }
+                });
+            }
+        }
+        /**
+         * Check if conditions are met for a trigger
+         * Supports dynamic field evaluation including custom fields and nested paths
+         */
+        evaluateConditions(conditions, data) {
+            if (!conditions || conditions.length === 0) {
+                return true; // No conditions means always fire
+            }
+            return conditions.every(condition => {
+                // Support dot notation for nested fields (e.g., 'customFields.industry')
+                const fieldValue = condition.field.includes('.')
+                    ? this.getNestedValue(data, condition.field)
+                    : data[condition.field];
+                const targetValue = condition.value;
+                switch (condition.operator) {
+                    case 'equals':
+                        return fieldValue === targetValue;
+                    case 'not_equals':
+                        return fieldValue !== targetValue;
+                    case 'contains':
+                        return String(fieldValue).includes(String(targetValue));
+                    case 'greater_than':
+                        return Number(fieldValue) > Number(targetValue);
+                    case 'less_than':
+                        return Number(fieldValue) < Number(targetValue);
+                    case 'in':
+                        return Array.isArray(targetValue) && targetValue.includes(fieldValue);
+                    case 'not_in':
+                        return Array.isArray(targetValue) && !targetValue.includes(fieldValue);
+                    default:
+                        return false;
+                }
+            });
+        }
+        /**
+         * Execute actions for a triggered event (client-side preview)
+         * Note: Actual execution happens on the backend
+         */
+        async executeActions(trigger, data) {
+            logger.info(`Executing actions for trigger: ${trigger.name}`);
+            for (const action of trigger.actions) {
+                try {
+                    await this.executeAction(action, data);
+                }
+                catch (error) {
+                    logger.error(`Failed to execute action:`, error);
+                }
+            }
+        }
+        /**
+         * Execute a single action
+         */
+        async executeAction(action, data) {
+            switch (action.type) {
+                case 'send_email':
+                    await this.executeSendEmail(action, data);
+                    break;
+                case 'webhook':
+                    await this.executeWebhook(action, data);
+                    break;
+                case 'create_task':
+                    await this.executeCreateTask(action, data);
+                    break;
+                case 'update_contact':
+                    await this.executeUpdateContact(action, data);
+                    break;
+                default:
+                    logger.warn(`Unknown action type:`, action);
+            }
+        }
+        /**
+         * Execute send email action (via backend API)
+         */
+        async executeSendEmail(action, data) {
+            logger.debug('Sending email:', action);
+            const payload = {
+                to: this.replaceVariables(action.to, data),
+                subject: action.subject ? this.replaceVariables(action.subject, data) : undefined,
+                body: action.body ? this.replaceVariables(action.body, data) : undefined,
+                templateId: action.templateId,
+                cc: action.cc,
+                bcc: action.bcc,
+                from: action.from,
+                delayMinutes: action.delayMinutes,
+            };
+            await this.request(`/api/workspaces/${this.workspaceId}/emails/send`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+        }
+        /**
+         * Execute webhook action
+         */
+        async executeWebhook(action, data) {
+            logger.debug('Calling webhook:', action.url);
+            const body = action.body ? this.replaceVariables(action.body, data) : JSON.stringify(data);
+            await fetch(action.url, {
+                method: action.method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...action.headers,
+                },
+                body,
+            });
+        }
+        /**
+         * Execute create task action
+         */
+        async executeCreateTask(action, data) {
+            logger.debug('Creating task:', action.title);
+            const dueDate = action.dueDays
+                ? new Date(Date.now() + action.dueDays * 24 * 60 * 60 * 1000).toISOString()
+                : undefined;
+            await this.request(`/api/workspaces/${this.workspaceId}/tasks`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    title: this.replaceVariables(action.title, data),
+                    description: action.description ? this.replaceVariables(action.description, data) : undefined,
+                    priority: action.priority,
+                    dueDate,
+                    assignedTo: action.assignedTo,
+                    relatedContactId: typeof data.contactId === 'string' ? data.contactId : undefined,
+                }),
+            });
+        }
+        /**
+         * Execute update contact action
+         */
+        async executeUpdateContact(action, data) {
+            const contactId = data.contactId || data._id;
+            if (!contactId) {
+                logger.warn('Cannot update contact: no contactId in data');
+                return;
+            }
+            logger.debug('Updating contact:', contactId);
+            await this.request(`/api/workspaces/${this.workspaceId}/contacts/${contactId}`, {
+                method: 'PUT',
+                body: JSON.stringify(action.updates),
+            });
+        }
+        /**
+         * Replace variables in a string template
+         * Supports syntax like {{contact.email}}, {{opportunity.value}}
+         */
+        replaceVariables(template, data) {
+            return template.replace(/\{\{([^}]+)\}\}/g, (match, path) => {
+                const value = this.getNestedValue(data, path.trim());
+                return value !== undefined ? String(value) : match;
+            });
+        }
+        /**
+         * Get nested value from object using dot notation
+         * Supports dynamic field access including custom fields
+         */
+        getNestedValue(obj, path) {
+            return path.split('.').reduce((current, key) => {
+                return current !== null && current !== undefined && typeof current === 'object'
+                    ? current[key]
+                    : undefined;
+            }, obj);
+        }
+        /**
+         * Extract all available field paths from a data object
+         * Useful for dynamic field discovery based on platform-specific attributes
+         * @param obj - The data object to extract fields from
+         * @param prefix - Internal use for nested paths
+         * @param maxDepth - Maximum depth to traverse (default: 3)
+         * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
+         */
+        extractAvailableFields(obj, prefix = '', maxDepth = 3) {
+            if (maxDepth <= 0)
+                return [];
+            const fields = [];
+            for (const key in obj) {
+                if (!obj.hasOwnProperty(key))
+                    continue;
+                const value = obj[key];
+                const fieldPath = prefix ? `${prefix}.${key}` : key;
+                fields.push(fieldPath);
+                // Recursively traverse nested objects
+                if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+                    const nestedFields = this.extractAvailableFields(value, fieldPath, maxDepth - 1);
+                    fields.push(...nestedFields);
+                }
+            }
+            return fields;
+        }
+        /**
+         * Get available fields from sample data
+         * Helps with dynamic field detection for platform-specific attributes
+         * @param sampleData - Sample data object to analyze
+         * @returns Array of available field paths
+         */
+        getAvailableFields(sampleData) {
+            return this.extractAvailableFields(sampleData);
+        }
+        // ============================================
+        // HELPER METHODS FOR COMMON PATTERNS
+        // ============================================
+        /**
+         * Create a simple email trigger
+         * Helper method for common use case
+         */
+        async createEmailTrigger(config) {
+            return this.createTrigger({
+                name: config.name,
+                eventType: config.eventType,
+                conditions: config.conditions,
+                actions: [
+                    {
+                        type: 'send_email',
+                        to: config.to,
+                        subject: config.subject,
+                        body: config.body,
+                    },
+                ],
+                isActive: true,
+            });
+        }
+        /**
+         * Create a task creation trigger
+         */
+        async createTaskTrigger(config) {
+            return this.createTrigger({
+                name: config.name,
+                eventType: config.eventType,
+                conditions: config.conditions,
+                actions: [
+                    {
+                        type: 'create_task',
+                        title: config.taskTitle,
+                        description: config.taskDescription,
+                        priority: config.priority,
+                        dueDays: config.dueDays,
+                    },
+                ],
+                isActive: true,
+            });
+        }
+        /**
+         * Create a webhook trigger
+         */
+        async createWebhookTrigger(config) {
+            return this.createTrigger({
+                name: config.name,
+                eventType: config.eventType,
+                conditions: config.conditions,
+                actions: [
+                    {
+                        type: 'webhook',
+                        url: config.webhookUrl,
+                        method: config.method || 'POST',
+                    },
+                ],
+                isActive: true,
+            });
+        }
+    }
+
+    /**
      * Clianta SDK - CRM API Client
      * @see SDK_VERSION in core/config.ts
      */
@@ -2589,12 +3136,23 @@
             this.apiEndpoint = apiEndpoint;
             this.workspaceId = workspaceId;
             this.authToken = authToken;
+            this.triggers = new EventTriggersManager(apiEndpoint, workspaceId, authToken);
         }
         /**
          * Set authentication token for API requests
          */
         setAuthToken(token) {
             this.authToken = token;
+            this.triggers.setAuthToken(token);
+        }
+        /**
+         * Validate required parameter exists
+         * @throws {Error} if value is null/undefined or empty string
+         */
+        validateRequired(param, value, methodName) {
+            if (value === null || value === undefined || value === '') {
+                throw new Error(`[CRMClient.${methodName}] ${param} is required`);
+            }
         }
         /**
          * Make authenticated API request
@@ -2659,6 +3217,7 @@
          * Get a single contact by ID
          */
         async getContact(contactId) {
+            this.validateRequired('contactId', contactId, 'getContact');
             return this.request(`/api/workspaces/${this.workspaceId}/contacts/${contactId}`);
         }
         /**
@@ -2674,6 +3233,7 @@
          * Update an existing contact
          */
         async updateContact(contactId, updates) {
+            this.validateRequired('contactId', contactId, 'updateContact');
             return this.request(`/api/workspaces/${this.workspaceId}/contacts/${contactId}`, {
                 method: 'PUT',
                 body: JSON.stringify(updates),
@@ -2683,6 +3243,7 @@
          * Delete a contact
          */
         async deleteContact(contactId) {
+            this.validateRequired('contactId', contactId, 'deleteContact');
             return this.request(`/api/workspaces/${this.workspaceId}/contacts/${contactId}`, {
                 method: 'DELETE',
             });
@@ -3046,6 +3607,90 @@
                 opportunityId: data.opportunityId,
             });
         }
+        // ============================================
+        // EMAIL TEMPLATES API
+        // ============================================
+        /**
+         * Get all email templates
+         */
+        async getEmailTemplates(params) {
+            const queryParams = new URLSearchParams();
+            if (params?.page)
+                queryParams.set('page', params.page.toString());
+            if (params?.limit)
+                queryParams.set('limit', params.limit.toString());
+            const query = queryParams.toString();
+            const endpoint = `/api/workspaces/${this.workspaceId}/email-templates${query ? `?${query}` : ''}`;
+            return this.request(endpoint);
+        }
+        /**
+         * Get a single email template by ID
+         */
+        async getEmailTemplate(templateId) {
+            return this.request(`/api/workspaces/${this.workspaceId}/email-templates/${templateId}`);
+        }
+        /**
+         * Create a new email template
+         */
+        async createEmailTemplate(template) {
+            return this.request(`/api/workspaces/${this.workspaceId}/email-templates`, {
+                method: 'POST',
+                body: JSON.stringify(template),
+            });
+        }
+        /**
+         * Update an email template
+         */
+        async updateEmailTemplate(templateId, updates) {
+            return this.request(`/api/workspaces/${this.workspaceId}/email-templates/${templateId}`, {
+                method: 'PUT',
+                body: JSON.stringify(updates),
+            });
+        }
+        /**
+         * Delete an email template
+         */
+        async deleteEmailTemplate(templateId) {
+            return this.request(`/api/workspaces/${this.workspaceId}/email-templates/${templateId}`, {
+                method: 'DELETE',
+            });
+        }
+        /**
+         * Send an email using a template
+         */
+        async sendEmail(data) {
+            return this.request(`/api/workspaces/${this.workspaceId}/emails/send`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        }
+        // ============================================
+        // EVENT TRIGGERS API (delegated to triggers manager)
+        // ============================================
+        /**
+         * Get all event triggers
+         */
+        async getEventTriggers() {
+            return this.triggers.getTriggers();
+        }
+        /**
+         * Create a new event trigger
+         */
+        async createEventTrigger(trigger) {
+            return this.triggers.createTrigger(trigger);
+        }
+        /**
+         * Update an event trigger
+         */
+        async updateEventTrigger(triggerId, updates) {
+            return this.triggers.updateTrigger(triggerId, updates);
+        }
+        /**
+         * Delete an event trigger
+         */
+        async deleteEventTrigger(triggerId) {
+            return this.triggers.deleteTrigger(triggerId);
+        }
     }
 
     /**
@@ -3100,11 +3745,13 @@
             Tracker,
             CRMClient,
             ConsentManager,
+            EventTriggersManager,
         };
     }
 
     exports.CRMClient = CRMClient;
     exports.ConsentManager = ConsentManager;
+    exports.EventTriggersManager = EventTriggersManager;
     exports.SDK_VERSION = SDK_VERSION;
     exports.Tracker = Tracker;
     exports.clianta = clianta;
