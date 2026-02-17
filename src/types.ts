@@ -435,3 +435,150 @@ export interface PaginatedResponse<T> {
         pages: number;
     };
 }
+
+// ============================================
+// EVENT TRIGGERS & AUTOMATION TYPES
+// ============================================
+
+export type TriggerEventType =
+    | 'contact.created'
+    | 'contact.updated'
+    | 'contact.deleted'
+    | 'opportunity.created'
+    | 'opportunity.updated'
+    | 'opportunity.stage_changed'
+    | 'opportunity.won'
+    | 'opportunity.lost'
+    | 'task.created'
+    | 'task.completed'
+    | 'task.overdue'
+    | 'activity.logged'
+    | 'form.submitted';
+
+export type TriggerActionType = 'send_email' | 'create_task' | 'update_contact' | 'webhook';
+
+export interface TriggerCondition {
+    /** Field to check (e.g., 'status', 'lifecycleStage', 'leadScore') */
+    field: string;
+    /** Operator for comparison */
+    operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'in' | 'not_in';
+    /** Value to compare against */
+    value: unknown;
+}
+
+export interface EmailTemplate {
+    /** Template ID */
+    _id?: string;
+    /** Template name */
+    name: string;
+    /** Email subject line (supports variables) */
+    subject: string;
+    /** Email body (supports HTML and variables) */
+    body: string;
+    /** Variables available in this template */
+    variables?: string[];
+    /** Sender email address */
+    fromEmail?: string;
+    /** Sender name */
+    fromName?: string;
+}
+
+export interface EmailAction {
+    /** Action type identifier */
+    type: 'send_email';
+    /** Email template ID or inline template */
+    templateId?: string;
+    /** Inline email subject (if not using template) */
+    subject?: string;
+    /** Inline email body (if not using template) */
+    body?: string;
+    /** Recipient email (supports variables like {{contact.email}}) */
+    to: string;
+    /** CC recipients */
+    cc?: string[];
+    /** BCC recipients */
+    bcc?: string[];
+    /** Sender email */
+    from?: string;
+    /** Delay in minutes before sending */
+    delayMinutes?: number;
+}
+
+export interface WebhookAction {
+    /** Action type identifier */
+    type: 'webhook';
+    /** Webhook URL to call */
+    url: string;
+    /** HTTP method */
+    method: 'POST' | 'PUT' | 'PATCH';
+    /** Custom headers */
+    headers?: Record<string, string>;
+    /** Request body template (supports variables) */
+    body?: string;
+}
+
+export interface TaskAction {
+    /** Action type identifier */
+    type: 'create_task';
+    /** Task title (supports variables) */
+    title: string;
+    /** Task description */
+    description?: string;
+    /** Task priority */
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    /** Due date in days from trigger */
+    dueDays?: number;
+    /** Assign to user ID */
+    assignedTo?: string;
+}
+
+export interface ContactUpdateAction {
+    /** Action type identifier */
+    type: 'update_contact';
+    /** Fields to update */
+    updates: Partial<Contact>;
+}
+
+export type TriggerAction = EmailAction | WebhookAction | TaskAction | ContactUpdateAction;
+
+export interface EventTrigger {
+    /** Trigger ID */
+    _id?: string;
+    /** Workspace ID */
+    workspaceId: string;
+    /** Trigger name */
+    name: string;
+    /** Description of what this trigger does */
+    description?: string;
+    /** Event type that activates this trigger */
+    eventType: TriggerEventType;
+    /** Conditions that must be met for trigger to fire */
+    conditions?: TriggerCondition[];
+    /** Actions to execute when trigger fires */
+    actions: TriggerAction[];
+    /** Whether this trigger is active */
+    isActive?: boolean;
+    /** Created timestamp */
+    createdAt?: string;
+    /** Updated timestamp */
+    updatedAt?: string;
+}
+
+export interface TriggerExecution {
+    /** Execution ID */
+    _id?: string;
+    /** Trigger ID that was executed */
+    triggerId: string;
+    /** Event that triggered the execution */
+    eventType: TriggerEventType;
+    /** Entity ID that triggered the event */
+    entityId: string;
+    /** Execution status */
+    status: 'pending' | 'success' | 'failed';
+    /** Error message if failed */
+    error?: string;
+    /** Actions executed */
+    actionsExecuted: number;
+    /** Execution timestamp */
+    executedAt: string;
+}
