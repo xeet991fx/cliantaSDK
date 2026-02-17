@@ -2780,7 +2780,7 @@
                 body: JSON.stringify(trigger),
             });
             // Cache the trigger locally if successful
-            if (result.success && result.data) {
+            if (result.success && result.data?._id) {
                 this.triggers.set(result.data._id, result.data);
             }
             return result;
@@ -2794,8 +2794,8 @@
                 body: JSON.stringify(updates),
             });
             // Update cache if successful
-            if (result.success && result.data) {
-                this.triggers.set(triggerId, result.data);
+            if (result.success && result.data?._id) {
+                this.triggers.set(result.data._id, result.data);
             }
             return result;
         }
@@ -2982,7 +2982,7 @@
                     priority: action.priority,
                     dueDate,
                     assignedTo: action.assignedTo,
-                    relatedContactId: data.contactId,
+                    relatedContactId: typeof data.contactId === 'string' ? data.contactId : undefined,
                 }),
             });
         }
@@ -3016,7 +3016,9 @@
          */
         getNestedValue(obj, path) {
             return path.split('.').reduce((current, key) => {
-                return current && typeof current === 'object' ? current[key] : undefined;
+                return current !== null && current !== undefined && typeof current === 'object'
+                    ? current[key]
+                    : undefined;
             }, obj);
         }
         // ============================================

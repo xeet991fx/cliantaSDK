@@ -127,8 +127,8 @@ export class EventTriggersManager {
         );
 
         // Cache the trigger locally if successful
-        if (result.success && result.data) {
-            this.triggers.set(result.data._id!, result.data);
+        if (result.success && result.data?._id) {
+            this.triggers.set(result.data._id, result.data);
         }
 
         return result;
@@ -150,8 +150,8 @@ export class EventTriggersManager {
         );
 
         // Update cache if successful
-        if (result.success && result.data) {
-            this.triggers.set(triggerId, result.data);
+        if (result.success && result.data?._id) {
+            this.triggers.set(result.data._id, result.data);
         }
 
         return result;
@@ -370,7 +370,7 @@ export class EventTriggersManager {
                     priority: action.priority,
                     dueDate,
                     assignedTo: action.assignedTo,
-                    relatedContactId: data.contactId as string,
+                    relatedContactId: typeof data.contactId === 'string' ? data.contactId : undefined,
                 }),
             }
         );
@@ -413,7 +413,9 @@ export class EventTriggersManager {
      */
     private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
         return path.split('.').reduce((current: unknown, key: string) => {
-            return current && typeof current === 'object' ? (current as Record<string, unknown>)[key] : undefined;
+            return current !== null && current !== undefined && typeof current === 'object' 
+                ? (current as Record<string, unknown>)[key] 
+                : undefined;
         }, obj);
     }
 

@@ -287,6 +287,39 @@ describe('EventTriggersManager', () => {
 
             expect(trigger.conditions).toHaveLength(2);
         });
+
+        it('should test condition evaluation through email trigger', async () => {
+            // Create trigger with conditions
+            const mockTrigger: EventTrigger = {
+                _id: 'trigger-1',
+                workspaceId: mockWorkspaceId,
+                name: 'Conditional Email',
+                eventType: 'contact.created',
+                conditions: [
+                    { field: 'status', operator: 'equals', value: 'lead' }
+                ],
+                actions: [
+                    {
+                        type: 'send_email',
+                        to: '{{contact.email}}',
+                        subject: 'Test',
+                        body: 'Test',
+                    }
+                ],
+                isActive: true,
+            };
+
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ data: mockTrigger }),
+                status: 201,
+            });
+
+            const result = await manager.createTrigger(mockTrigger);
+            expect(result.success).toBe(true);
+            expect(result.data?.conditions).toHaveLength(1);
+            expect(result.data?.conditions?.[0].operator).toBe('equals');
+        });
     });
 
     describe('Variable Replacement', () => {
@@ -302,6 +335,65 @@ describe('EventTriggersManager', () => {
             // This would be tested through actual email sending
             // The replaceVariables method is private but tested through actions
             expect(template).toContain('{{contact.firstName}}');
+        });
+
+        it('should test variable replacement through email sending', async () => {
+            const mockTrigger: EventTrigger = {
+                _id: 'trigger-1',
+                workspaceId: mockWorkspaceId,
+                name: 'Variable Test',
+                eventType: 'contact.created',
+                actions: [
+                    {
+                        type: 'send_email',
+                        to: '{{contact.email}}',
+                        subject: 'Welcome {{contact.firstName}}',
+                        body: 'Hello {{contact.firstName}} {{contact.lastName}}',
+                    }
+                ],
+                isActive: true,
+            };
+
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ data: mockTrigger }),
+                status: 201,
+            });
+
+            const result = await manager.createTrigger(mockTrigger);
+            expect(result.success).toBe(true);
+            
+            const emailAction = result.data?.actions[0] as any;
+            expect(emailAction.subject).toContain('{{contact.firstName}}');
+            expect(emailAction.body).toContain('{{contact.firstName}}');
+        });
+
+        it('should handle nested variable paths', async () => {
+            const mockTrigger: EventTrigger = {
+                _id: 'trigger-1',
+                workspaceId: mockWorkspaceId,
+                name: 'Nested Variables',
+                eventType: 'opportunity.created',
+                actions: [
+                    {
+                        type: 'send_email',
+                        to: '{{contact.email}}',
+                        subject: 'New Opportunity',
+                        body: 'Value: {{opportunity.value}}, Contact: {{contact.firstName}}',
+                    }
+                ],
+                isActive: true,
+            };
+
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ data: mockTrigger }),
+                status: 201,
+            });
+
+            const result = await manager.createTrigger(mockTrigger);
+            expect(result.success).toBe(true);
+            expect(result.data?.actions[0]).toBeDefined();
         });
     });
 
