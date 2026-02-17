@@ -458,7 +458,11 @@ export type TriggerEventType =
 export type TriggerActionType = 'send_email' | 'create_task' | 'update_contact' | 'webhook';
 
 export interface TriggerCondition {
-    /** Field to check (e.g., 'status', 'lifecycleStage', 'leadScore') */
+    /** 
+     * Field to check - supports dynamic field names including custom fields
+     * Examples: 'status', 'lifecycleStage', 'leadScore', 'customFields.industry'
+     * Use dot notation for nested fields: 'contact.email', 'customFields.accountType'
+     */
     field: string;
     /** Operator for comparison */
     operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'in' | 'not_in';

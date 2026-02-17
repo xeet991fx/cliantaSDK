@@ -237,6 +237,7 @@ export class EventTriggersManager {
 
     /**
      * Check if conditions are met for a trigger
+     * Supports dynamic field evaluation including custom fields and nested paths
      */
     private evaluateConditions(conditions: TriggerCondition[], data: Record<string, unknown>): boolean {
         if (!conditions || conditions.length === 0) {
@@ -244,7 +245,10 @@ export class EventTriggersManager {
         }
 
         return conditions.every(condition => {
-            const fieldValue = data[condition.field];
+            // Support dot notation for nested fields (e.g., 'customFields.industry')
+            const fieldValue = condition.field.includes('.') 
+                ? this.getNestedValue(data, condition.field)
+                : data[condition.field];
             const targetValue = condition.value;
 
             switch (condition.operator) {
@@ -410,6 +414,7 @@ export class EventTriggersManager {
 
     /**
      * Get nested value from object using dot notation
+     * Supports dynamic field access including custom fields
      */
     private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
         return path.split('.').reduce((current: unknown, key: string) => {
@@ -417,6 +422,55 @@ export class EventTriggersManager {
                 ? (current as Record<string, unknown>)[key] 
                 : undefined;
         }, obj);
+    }
+
+    /**
+     * Extract all available field paths from a data object
+     * Useful for dynamic field discovery based on platform-specific attributes
+     * @param obj - The data object to extract fields from
+     * @param prefix - Internal use for nested paths
+     * @param maxDepth - Maximum depth to traverse (default: 3)
+     * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
+     */
+    private extractAvailableFields(
+        obj: Record<string, unknown>, 
+        prefix: string = '', 
+        maxDepth: number = 3
+    ): string[] {
+        if (maxDepth <= 0) return [];
+        
+        const fields: string[] = [];
+        
+        for (const key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+            
+            const value = obj[key];
+            const fieldPath = prefix ? `${prefix}.${key}` : key;
+            
+            fields.push(fieldPath);
+            
+            // Recursively traverse nested objects
+            if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+                const nestedFields = this.extractAvailableFields(
+                    value as Record<string, unknown>,
+                    fieldPath,
+                    maxDepth - 1
+                );
+                fields.push(...nestedFields);
+            }
+        }
+        
+        return fields;
+    }
+
+    /**
+     * Get available fields from sample data
+     * Helps with dynamic field detection for platform-specific attributes
+     * @param sampleData - Sample data object to analyze
+     * @returns Array of available field paths
+     */
+    getAvailableFields(sampleData: Record<string, unknown>): string[] {
+        return this.extractAvailableFields(sampleData);
     }
 
     // ============================================

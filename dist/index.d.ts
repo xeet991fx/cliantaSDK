@@ -271,7 +271,11 @@ interface PaginatedResponse<T> {
 }
 type TriggerEventType = 'contact.created' | 'contact.updated' | 'contact.deleted' | 'opportunity.created' | 'opportunity.updated' | 'opportunity.stage_changed' | 'opportunity.won' | 'opportunity.lost' | 'task.created' | 'task.completed' | 'task.overdue' | 'activity.logged' | 'form.submitted';
 interface TriggerCondition {
-    /** Field to check (e.g., 'status', 'lifecycleStage', 'leadScore') */
+    /**
+     * Field to check - supports dynamic field names including custom fields
+     * Examples: 'status', 'lifecycleStage', 'leadScore', 'customFields.industry'
+     * Use dot notation for nested fields: 'contact.email', 'customFields.accountType'
+     */
     field: string;
     /** Operator for comparison */
     operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'in' | 'not_in';
@@ -561,6 +565,7 @@ declare class EventTriggersManager {
     emit(eventType: TriggerEventType, data: unknown): void;
     /**
      * Check if conditions are met for a trigger
+     * Supports dynamic field evaluation including custom fields and nested paths
      */
     private evaluateConditions;
     /**
@@ -595,8 +600,25 @@ declare class EventTriggersManager {
     private replaceVariables;
     /**
      * Get nested value from object using dot notation
+     * Supports dynamic field access including custom fields
      */
     private getNestedValue;
+    /**
+     * Extract all available field paths from a data object
+     * Useful for dynamic field discovery based on platform-specific attributes
+     * @param obj - The data object to extract fields from
+     * @param prefix - Internal use for nested paths
+     * @param maxDepth - Maximum depth to traverse (default: 3)
+     * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
+     */
+    private extractAvailableFields;
+    /**
+     * Get available fields from sample data
+     * Helps with dynamic field detection for platform-specific attributes
+     * @param sampleData - Sample data object to analyze
+     * @returns Array of available field paths
+     */
+    getAvailableFields(sampleData: Record<string, unknown>): string[];
     /**
      * Create a simple email trigger
      * Helper method for common use case

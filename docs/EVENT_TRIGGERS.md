@@ -213,11 +213,110 @@ await crm.createEventTrigger({
 - `in` - Field is in array of values
 - `not_in` - Field is not in array of values
 
+## Dynamic Field Detection
+
+The trigger system supports **dynamic field access** for platform-specific attributes. You can reference any field in your data, including custom fields and nested properties.
+
+### Custom Fields
+
+Use dot notation to access nested fields and custom attributes:
+
+```typescript
+// Access custom fields
+await crm.createEventTrigger({
+  name: 'Industry-Specific Trigger',
+  eventType: 'contact.created',
+  conditions: [
+    { field: 'customFields.industry', operator: 'equals', value: 'Technology' },
+    { field: 'customFields.accountType', operator: 'equals', value: 'Enterprise' },
+  ],
+  actions: [{
+    type: 'send_email',
+    to: '{{contact.email}}',
+    subject: 'Welcome {{customFields.accountType}} Customer',
+    body: 'We serve the {{customFields.industry}} industry',
+  }],
+});
+```
+
+### Platform-Specific Attributes
+
+Different platforms may have unique attributes. The system automatically detects and supports them:
+
+```typescript
+// Shopify-specific attributes
+await crm.createEventTrigger({
+  name: 'High-Value Shopify Customer',
+  eventType: 'contact.updated',
+  conditions: [
+    { field: 'shopifyData.totalSpent', operator: 'greater_than', value: 1000 },
+    { field: 'shopifyData.orderCount', operator: 'greater_than', value: 5 },
+  ],
+  actions: [{
+    type: 'update_contact',
+    updates: { status: 'vip', lifecycleStage: 'customer' },
+  }],
+});
+
+// WordPress-specific attributes
+await crm.createEventTrigger({
+  name: 'Active WordPress User',
+  eventType: 'activity.logged',
+  conditions: [
+    { field: 'wpData.postCount', operator: 'greater_than', value: 10 },
+    { field: 'wpData.membershipLevel', operator: 'equals', value: 'premium' },
+  ],
+  actions: [{
+    type: 'send_email',
+    to: '{{contact.email}}',
+    subject: 'Thank You for Being Active!',
+    body: 'You have {{wpData.postCount}} posts!',
+  }],
+});
+```
+
+### Discovering Available Fields
+
+To see what fields are available in your data:
+
+```typescript
+// Get available fields from sample data
+const sampleContact = {
+  email: 'test@example.com',
+  firstName: 'John',
+  customFields: {
+    industry: 'Technology',
+    accountSize: 'Enterprise',
+  },
+  shopifyData: {
+    totalSpent: 5000,
+    orderCount: 12,
+  },
+};
+
+const availableFields = crm.triggers.getAvailableFields(sampleContact);
+console.log(availableFields);
+// Output: ['email', 'firstName', 'customFields', 'customFields.industry', 
+//          'customFields.accountSize', 'shopifyData', 'shopifyData.totalSpent', ...]
+```
+
+### Nested Path Support
+
+All field references support dot notation for nested access:
+
+```typescript
+conditions: [
+  { field: 'user.profile.preferences.emailOptIn', operator: 'equals', value: true },
+  { field: 'metadata.source.campaign', operator: 'equals', value: 'summer-2024' },
+  { field: 'integration.salesforce.accountId', operator: 'contains', value: 'ACC' },
+]
+```
+
 ## Template Variables
 
-Use dynamic variables in your email subjects, bodies, and task titles:
+Use dynamic variables in your email subjects, bodies, and task titles. Variables support the same dot notation as conditions:
 
-### Contact Variables
+### Standard Variables
 - `{{contact.email}}`
 - `{{contact.firstName}}`
 - `{{contact.lastName}}`
@@ -225,6 +324,17 @@ Use dynamic variables in your email subjects, bodies, and task titles:
 - `{{contact.phone}}`
 - `{{contact.status}}`
 - `{{contact.lifecycleStage}}`
+
+### Custom Field Variables
+- `{{customFields.industry}}`
+- `{{customFields.accountType}}`
+- `{{customFields.anyFieldName}}`
+
+### Platform-Specific Variables
+- `{{shopifyData.totalSpent}}`
+- `{{wpData.postCount}}`
+- `{{salesforceData.accountId}}`
+- Any nested field path
 
 ### Opportunity Variables
 - `{{opportunity.title}}`

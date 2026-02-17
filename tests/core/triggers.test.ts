@@ -440,4 +440,128 @@ describe('EventTriggersManager', () => {
             expect(goodCallback).toHaveBeenCalled();
         });
     });
+
+    describe('Dynamic Field Detection', () => {
+        it('should extract available fields from flat object', () => {
+            const sampleData = {
+                email: 'test@example.com',
+                firstName: 'John',
+                status: 'lead',
+            };
+
+            const fields = manager.getAvailableFields(sampleData);
+
+            expect(fields).toContain('email');
+            expect(fields).toContain('firstName');
+            expect(fields).toContain('status');
+        });
+
+        it('should extract nested field paths', () => {
+            const sampleData = {
+                contact: {
+                    email: 'test@example.com',
+                    firstName: 'John',
+                },
+                customFields: {
+                    industry: 'Technology',
+                    accountType: 'Enterprise',
+                },
+            };
+
+            const fields = manager.getAvailableFields(sampleData);
+
+            expect(fields).toContain('contact');
+            expect(fields).toContain('contact.email');
+            expect(fields).toContain('contact.firstName');
+            expect(fields).toContain('customFields');
+            expect(fields).toContain('customFields.industry');
+            expect(fields).toContain('customFields.accountType');
+        });
+
+        it('should handle deeply nested structures', () => {
+            const sampleData = {
+                user: {
+                    profile: {
+                        settings: {
+                            notifications: true,
+                        },
+                    },
+                },
+            };
+
+            const fields = manager.getAvailableFields(sampleData);
+
+            expect(fields).toContain('user');
+            expect(fields).toContain('user.profile');
+            expect(fields).toContain('user.profile.settings');
+        });
+
+        it('should support custom field conditions', async () => {
+            const mockTrigger: EventTrigger = {
+                _id: 'trigger-1',
+                workspaceId: mockWorkspaceId,
+                name: 'Custom Field Trigger',
+                eventType: 'contact.created',
+                conditions: [
+                    { field: 'customFields.industry', operator: 'equals', value: 'Technology' },
+                    { field: 'customFields.accountType', operator: 'equals', value: 'Enterprise' },
+                ],
+                actions: [
+                    {
+                        type: 'send_email',
+                        to: '{{contact.email}}',
+                        subject: 'Welcome Enterprise Tech Customer',
+                        body: 'Thank you for joining!',
+                    },
+                ],
+                isActive: true,
+            };
+
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ data: mockTrigger }),
+                status: 201,
+            });
+
+            const result = await manager.createTrigger(mockTrigger);
+
+            expect(result.success).toBe(true);
+            expect(result.data?.conditions?.[0].field).toBe('customFields.industry');
+            expect(result.data?.conditions?.[1].field).toBe('customFields.accountType');
+        });
+
+        it('should support platform-specific attributes in conditions', async () => {
+            const mockTrigger: EventTrigger = {
+                _id: 'trigger-1',
+                workspaceId: mockWorkspaceId,
+                name: 'Platform Specific Trigger',
+                eventType: 'contact.updated',
+                conditions: [
+                    { field: 'shopifyData.totalSpent', operator: 'greater_than', value: 1000 },
+                    { field: 'shopifyData.orderCount', operator: 'greater_than', value: 5 },
+                ],
+                actions: [
+                    {
+                        type: 'update_contact',
+                        updates: {
+                            status: 'customer',
+                            lifecycleStage: 'customer',
+                        },
+                    },
+                ],
+                isActive: true,
+            };
+
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ data: mockTrigger }),
+                status: 201,
+            });
+
+            const result = await manager.createTrigger(mockTrigger);
+
+            expect(result.success).toBe(true);
+            expect(result.data?.conditions?.[0].field).toBe('shopifyData.totalSpent');
+        });
+    });
 });
