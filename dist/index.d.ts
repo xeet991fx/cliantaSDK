@@ -269,6 +269,128 @@ interface PaginatedResponse<T> {
         pages: number;
     };
 }
+type TriggerEventType = 'contact.created' | 'contact.updated' | 'contact.deleted' | 'opportunity.created' | 'opportunity.updated' | 'opportunity.stage_changed' | 'opportunity.won' | 'opportunity.lost' | 'task.created' | 'task.completed' | 'task.overdue' | 'activity.logged' | 'form.submitted';
+interface TriggerCondition {
+    /**
+     * Field to check - supports dynamic field names including custom fields
+     * Examples: 'status', 'lifecycleStage', 'leadScore', 'customFields.industry'
+     * Use dot notation for nested fields: 'contact.email', 'customFields.accountType'
+     */
+    field: string;
+    /** Operator for comparison */
+    operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'in' | 'not_in';
+    /** Value to compare against */
+    value: unknown;
+}
+interface EmailTemplate {
+    /** Template ID */
+    _id?: string;
+    /** Template name */
+    name: string;
+    /** Email subject line (supports variables) */
+    subject: string;
+    /** Email body (supports HTML and variables) */
+    body: string;
+    /** Variables available in this template */
+    variables?: string[];
+    /** Sender email address */
+    fromEmail?: string;
+    /** Sender name */
+    fromName?: string;
+}
+interface EmailAction {
+    /** Action type identifier */
+    type: 'send_email';
+    /** Email template ID or inline template */
+    templateId?: string;
+    /** Inline email subject (if not using template) */
+    subject?: string;
+    /** Inline email body (if not using template) */
+    body?: string;
+    /** Recipient email (supports variables like {{contact.email}}) */
+    to: string;
+    /** CC recipients */
+    cc?: string[];
+    /** BCC recipients */
+    bcc?: string[];
+    /** Sender email */
+    from?: string;
+    /** Delay in minutes before sending */
+    delayMinutes?: number;
+}
+interface WebhookAction {
+    /** Action type identifier */
+    type: 'webhook';
+    /** Webhook URL to call */
+    url: string;
+    /** HTTP method */
+    method: 'POST' | 'PUT' | 'PATCH';
+    /** Custom headers */
+    headers?: Record<string, string>;
+    /** Request body template (supports variables) */
+    body?: string;
+}
+interface TaskAction {
+    /** Action type identifier */
+    type: 'create_task';
+    /** Task title (supports variables) */
+    title: string;
+    /** Task description */
+    description?: string;
+    /** Task priority */
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    /** Due date in days from trigger */
+    dueDays?: number;
+    /** Assign to user ID */
+    assignedTo?: string;
+}
+interface ContactUpdateAction {
+    /** Action type identifier */
+    type: 'update_contact';
+    /** Fields to update */
+    updates: Partial<Contact>;
+}
+type TriggerAction = EmailAction | WebhookAction | TaskAction | ContactUpdateAction;
+interface EventTrigger {
+    /** Trigger ID */
+    _id?: string;
+    /** Workspace ID */
+    workspaceId: string;
+    /** Trigger name */
+    name: string;
+    /** Description of what this trigger does */
+    description?: string;
+    /** Event type that activates this trigger */
+    eventType: TriggerEventType;
+    /** Conditions that must be met for trigger to fire */
+    conditions?: TriggerCondition[];
+    /** Actions to execute when trigger fires */
+    actions: TriggerAction[];
+    /** Whether this trigger is active */
+    isActive?: boolean;
+    /** Created timestamp */
+    createdAt?: string;
+    /** Updated timestamp */
+    updatedAt?: string;
+}
+interface TriggerExecution {
+    /** Execution ID */
+    _id?: string;
+    /** Trigger ID that was executed */
+    triggerId: string;
+    /** Event that triggered the execution */
+    eventType: TriggerEventType;
+    /** Entity ID that triggered the event */
+    entityId: string;
+    /** Execution status */
+    status: 'pending' | 'success' | 'failed';
+    /** Error message if failed */
+    error?: string;
+    /** Actions executed */
+    actionsExecuted: number;
+    /** Execution timestamp */
+    executedAt: string;
+}
 
 /**
  * Clianta SDK - Main Tracker Class
@@ -288,6 +410,8 @@ declare class Tracker implements TrackerCore {
     private sessionId;
     private isInitialized;
     private consentManager;
+    /** Pending identify retry on next flush */
+    private pendingIdentify;
     constructor(workspaceId: string, userConfig?: CliantaConfig);
     /**
      * Create visitor ID based on storage mode
@@ -318,6 +442,10 @@ declare class Tracker implements TrackerCore {
      * Identify a visitor
      */
     identify(email: string, traits?: UserTraits): Promise<void>;
+    /**
+     * Retry pending identify call
+     */
+    private retryPendingIdentify;
     /**
      * Update consent state
      */
@@ -365,6 +493,169 @@ declare class Tracker implements TrackerCore {
 }
 
 /**
+ * Clianta SDK - Event Triggers Manager
+ * Manages event-driven automation and email notifications
+ */
+
+/**
+ * Event Triggers Manager
+ * Handles event-driven automation based on CRM actions
+ *
+ * Similar to:
+ * - Salesforce: Process Builder, Flow Automation
+ * - HubSpot: Workflows, Email Sequences
+ * - Pipedrive: Workflow Automation
+ */
+declare class EventTriggersManager {
+    private apiEndpoint;
+    private workspaceId;
+    private authToken?;
+    private triggers;
+    private listeners;
+    constructor(apiEndpoint: string, workspaceId: string, authToken?: string);
+    /**
+     * Set authentication token
+     */
+    setAuthToken(token: string): void;
+    /**
+     * Make authenticated API request
+     */
+    private request;
+    /**
+     * Get all event triggers
+     */
+    getTriggers(): Promise<ApiResponse<EventTrigger[]>>;
+    /**
+     * Get a single trigger by ID
+     */
+    getTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a new event trigger
+     */
+    createTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Update an existing trigger
+     */
+    updateTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Delete a trigger
+     */
+    deleteTrigger(triggerId: string): Promise<ApiResponse<void>>;
+    /**
+     * Activate a trigger
+     */
+    activateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Deactivate a trigger
+     */
+    deactivateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Register a local event listener for client-side triggers
+     * This allows immediate client-side reactions to events
+     */
+    on(eventType: TriggerEventType, callback: (data: unknown) => void): void;
+    /**
+     * Remove an event listener
+     */
+    off(eventType: TriggerEventType, callback: (data: unknown) => void): void;
+    /**
+     * Emit an event (client-side only)
+     * This will trigger any registered local listeners
+     */
+    emit(eventType: TriggerEventType, data: unknown): void;
+    /**
+     * Check if conditions are met for a trigger
+     * Supports dynamic field evaluation including custom fields and nested paths
+     */
+    private evaluateConditions;
+    /**
+     * Execute actions for a triggered event (client-side preview)
+     * Note: Actual execution happens on the backend
+     */
+    executeActions(trigger: EventTrigger, data: Record<string, unknown>): Promise<void>;
+    /**
+     * Execute a single action
+     */
+    private executeAction;
+    /**
+     * Execute send email action (via backend API)
+     */
+    private executeSendEmail;
+    /**
+     * Execute webhook action
+     */
+    private executeWebhook;
+    /**
+     * Execute create task action
+     */
+    private executeCreateTask;
+    /**
+     * Execute update contact action
+     */
+    private executeUpdateContact;
+    /**
+     * Replace variables in a string template
+     * Supports syntax like {{contact.email}}, {{opportunity.value}}
+     */
+    private replaceVariables;
+    /**
+     * Get nested value from object using dot notation
+     * Supports dynamic field access including custom fields
+     */
+    private getNestedValue;
+    /**
+     * Extract all available field paths from a data object
+     * Useful for dynamic field discovery based on platform-specific attributes
+     * @param obj - The data object to extract fields from
+     * @param prefix - Internal use for nested paths
+     * @param maxDepth - Maximum depth to traverse (default: 3)
+     * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
+     */
+    private extractAvailableFields;
+    /**
+     * Get available fields from sample data
+     * Helps with dynamic field detection for platform-specific attributes
+     * @param sampleData - Sample data object to analyze
+     * @returns Array of available field paths
+     */
+    getAvailableFields(sampleData: Record<string, unknown>): string[];
+    /**
+     * Create a simple email trigger
+     * Helper method for common use case
+     */
+    createEmailTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        to: string;
+        subject: string;
+        body: string;
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a task creation trigger
+     */
+    createTaskTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        taskTitle: string;
+        taskDescription?: string;
+        priority?: 'low' | 'medium' | 'high' | 'urgent';
+        dueDays?: number;
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a webhook trigger
+     */
+    createWebhookTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        webhookUrl: string;
+        method?: 'POST' | 'PUT' | 'PATCH';
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+}
+
+/**
  * Clianta SDK - CRM API Client
  * @see SDK_VERSION in core/config.ts
  */
@@ -376,11 +667,17 @@ declare class CRMClient {
     private apiEndpoint;
     private workspaceId;
     private authToken?;
+    triggers: EventTriggersManager;
     constructor(apiEndpoint: string, workspaceId: string, authToken?: string);
     /**
      * Set authentication token for API requests
      */
     setAuthToken(token: string): void;
+    /**
+     * Validate required parameter exists
+     * @throws {Error} if value is null/undefined or empty string
+     */
+    private validateRequired;
     /**
      * Make authenticated API request
      */
@@ -589,6 +886,60 @@ declare class CRMClient {
         opportunityId?: string;
         content: string;
     }): Promise<ApiResponse<Activity>>;
+    /**
+     * Get all email templates
+     */
+    getEmailTemplates(params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<EmailTemplate>>>;
+    /**
+     * Get a single email template by ID
+     */
+    getEmailTemplate(templateId: string): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Create a new email template
+     */
+    createEmailTemplate(template: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Update an email template
+     */
+    updateEmailTemplate(templateId: string, updates: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Delete an email template
+     */
+    deleteEmailTemplate(templateId: string): Promise<ApiResponse<void>>;
+    /**
+     * Send an email using a template
+     */
+    sendEmail(data: {
+        to: string;
+        templateId?: string;
+        subject?: string;
+        body?: string;
+        cc?: string[];
+        bcc?: string[];
+        variables?: Record<string, unknown>;
+        contactId?: string;
+    }): Promise<ApiResponse<{
+        messageId: string;
+    }>>;
+    /**
+     * Get all event triggers
+     */
+    getEventTriggers(): Promise<ApiResponse<EventTrigger[]>>;
+    /**
+     * Create a new event trigger
+     */
+    createEventTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Update an event trigger
+     */
+    updateEventTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Delete an event trigger
+     */
+    deleteEventTrigger(triggerId: string): Promise<ApiResponse<void>>;
 }
 
 /**
@@ -721,5 +1072,5 @@ declare const SDK_VERSION = "1.2.0";
  */
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
-export { CRMClient, ConsentManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, EventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TrackerCore, TrackingEvent, UserTraits };
+export { CRMClient, ConsentManager, EventTriggersManager, SDK_VERSION, Tracker, clianta, clianta as default };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactUpdateAction, EmailAction, EmailTemplate, EventTrigger, EventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, WebhookAction };

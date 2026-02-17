@@ -11,8 +11,11 @@ import type {
     Task,
     Activity,
     ApiResponse,
-    PaginatedResponse
+    PaginatedResponse,
+    EventTrigger,
+    EmailTemplate,
 } from '../types';
+import { EventTriggersManager } from './triggers';
 
 /**
  * CRM API Client for managing contacts and opportunities
@@ -21,11 +24,13 @@ export class CRMClient {
     private apiEndpoint: string;
     private workspaceId: string;
     private authToken?: string;
+    public triggers: EventTriggersManager;
 
     constructor(apiEndpoint: string, workspaceId: string, authToken?: string) {
         this.apiEndpoint = apiEndpoint;
         this.workspaceId = workspaceId;
         this.authToken = authToken;
+        this.triggers = new EventTriggersManager(apiEndpoint, workspaceId, authToken);
     }
 
     /**
@@ -33,6 +38,7 @@ export class CRMClient {
      */
     setAuthToken(token: string): void {
         this.authToken = token;
+        this.triggers.setAuthToken(token);
     }
 
     /**
@@ -678,5 +684,133 @@ export class CRMClient {
             contactId: data.contactId,
             opportunityId: data.opportunityId,
         });
+    }
+
+    // ============================================
+    // EMAIL TEMPLATES API
+    // ============================================
+
+    /**
+     * Get all email templates
+     */
+    async getEmailTemplates(params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<EmailTemplate>>> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.set('page', params.page.toString());
+        if (params?.limit) queryParams.set('limit', params.limit.toString());
+
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/email-templates${query ? `?${query}` : ''}`;
+
+        return this.request<PaginatedResponse<EmailTemplate>>(endpoint);
+    }
+
+    /**
+     * Get a single email template by ID
+     */
+    async getEmailTemplate(templateId: string): Promise<ApiResponse<EmailTemplate>> {
+        return this.request<EmailTemplate>(
+            `/api/workspaces/${this.workspaceId}/email-templates/${templateId}`
+        );
+    }
+
+    /**
+     * Create a new email template
+     */
+    async createEmailTemplate(template: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>> {
+        return this.request<EmailTemplate>(
+            `/api/workspaces/${this.workspaceId}/email-templates`,
+            {
+                method: 'POST',
+                body: JSON.stringify(template),
+            }
+        );
+    }
+
+    /**
+     * Update an email template
+     */
+    async updateEmailTemplate(
+        templateId: string,
+        updates: Partial<EmailTemplate>
+    ): Promise<ApiResponse<EmailTemplate>> {
+        return this.request<EmailTemplate>(
+            `/api/workspaces/${this.workspaceId}/email-templates/${templateId}`,
+            {
+                method: 'PUT',
+                body: JSON.stringify(updates),
+            }
+        );
+    }
+
+    /**
+     * Delete an email template
+     */
+    async deleteEmailTemplate(templateId: string): Promise<ApiResponse<void>> {
+        return this.request<void>(
+            `/api/workspaces/${this.workspaceId}/email-templates/${templateId}`,
+            {
+                method: 'DELETE',
+            }
+        );
+    }
+
+    /**
+     * Send an email using a template
+     */
+    async sendEmail(data: {
+        to: string;
+        templateId?: string;
+        subject?: string;
+        body?: string;
+        cc?: string[];
+        bcc?: string[];
+        variables?: Record<string, unknown>;
+        contactId?: string;
+    }): Promise<ApiResponse<{ messageId: string }>> {
+        return this.request<{ messageId: string }>(
+            `/api/workspaces/${this.workspaceId}/emails/send`,
+            {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }
+        );
+    }
+
+    // ============================================
+    // EVENT TRIGGERS API (delegated to triggers manager)
+    // ============================================
+
+    /**
+     * Get all event triggers
+     */
+    async getEventTriggers(): Promise<ApiResponse<EventTrigger[]>> {
+        return this.triggers.getTriggers();
+    }
+
+    /**
+     * Create a new event trigger
+     */
+    async createEventTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>> {
+        return this.triggers.createTrigger(trigger);
+    }
+
+    /**
+     * Update an event trigger
+     */
+    async updateEventTrigger(
+        triggerId: string,
+        updates: Partial<EventTrigger>
+    ): Promise<ApiResponse<EventTrigger>> {
+        return this.triggers.updateTrigger(triggerId, updates);
+    }
+
+    /**
+     * Delete an event trigger
+     */
+    async deleteEventTrigger(triggerId: string): Promise<ApiResponse<void>> {
+        return this.triggers.deleteTrigger(triggerId);
     }
 }

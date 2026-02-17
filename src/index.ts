@@ -7,6 +7,7 @@
 import { Tracker } from './core/tracker';
 import { CRMClient } from './core/crm';
 import { ConsentManager } from './consent';
+import { EventTriggersManager } from './core/triggers';
 import type { CliantaConfig, TrackerCore } from './types';
 
 // Export types
@@ -29,6 +30,16 @@ export type {
     Activity,
     ApiResponse,
     PaginatedResponse,
+    EventTrigger,
+    TriggerEventType,
+    TriggerAction,
+    TriggerCondition,
+    EmailAction,
+    WebhookAction,
+    TaskAction,
+    ContactUpdateAction,
+    EmailTemplate,
+    TriggerExecution,
 } from './types';
 
 // Export consent types
@@ -37,8 +48,8 @@ export type { ConsentChangeCallback, ConsentManagerConfig, StoredConsent } from 
 // Export SDK version
 export { SDK_VERSION } from './core/config';
 
-// Export Tracker, CRM, and Consent classes for direct use
-export { Tracker, CRMClient, ConsentManager };
+// Export Tracker, CRM, Triggers, and Consent classes for direct use
+export { Tracker, CRMClient, ConsentManager, EventTriggersManager };
 
 // Global instance cache
 let globalInstance: Tracker | null = null;
@@ -86,11 +97,12 @@ export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCor
 // Attach to window for <script> usage
 if (typeof window !== 'undefined') {
     (window as unknown as { clianta: typeof clianta }).clianta = clianta;
-    (window as unknown as { Clianta: { clianta: typeof clianta; Tracker: typeof Tracker; CRMClient: typeof CRMClient; ConsentManager: typeof ConsentManager } }).Clianta = {
+    (window as unknown as { Clianta: { clianta: typeof clianta; Tracker: typeof Tracker; CRMClient: typeof CRMClient; ConsentManager: typeof ConsentManager; EventTriggersManager: typeof EventTriggersManager } }).Clianta = {
         clianta,
         Tracker,
         CRMClient,
         ConsentManager,
+        EventTriggersManager,
     };
 }
 

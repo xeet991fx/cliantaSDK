@@ -1,6 +1,15 @@
 # Clianta SDK
 
-Professional CRM and tracking SDK for lead generation. Works with any website or JavaScript framework.
+Professional CRM and tracking SDK for lead generation with **automated email triggers** and workflows. Works with any website or JavaScript framework.
+
+## ✨ Key Features
+
+- 📊 **Visitor & Event Tracking** - Track page views, clicks, forms, and custom events
+- 👥 **CRM Management** - Contacts, companies, opportunities, tasks, and activities
+- 🤖 **Event Triggers & Automation** - Automated emails, tasks, and webhooks (like Salesforce & HubSpot)
+- 📧 **Email Notifications** - Send automated emails based on CRM actions
+- 🔒 **GDPR Compliant** - Built-in consent management
+- ⚡ **Framework Agnostic** - Works with React, Vue, Next.js, or vanilla JavaScript
 
 ## Installation
 
@@ -428,6 +437,67 @@ import {
   type TrackingEvent,
 } from '@clianta/sdk';
 ```
+
+---
+
+## Event Triggers & Automation
+
+Automate your workflows with event-driven triggers. Send emails, create tasks, or call webhooks when specific actions occur.
+
+### Quick Example
+
+```typescript
+import { CRMClient } from '@clianta/sdk';
+
+const crm = new CRMClient(
+  'https://api.clianta.online',
+  'your-workspace-id',
+  'your-auth-token'
+);
+
+// Send welcome email when a contact is created
+await crm.createEventTrigger({
+  name: 'Welcome Email',
+  eventType: 'contact.created',
+  actions: [
+    {
+      type: 'send_email',
+      to: '{{contact.email}}',
+      subject: 'Welcome to Our Platform!',
+      body: 'Hello {{contact.firstName}}, welcome aboard!',
+    }
+  ],
+  isActive: true,
+});
+
+// Create task when high-value opportunity is created
+await crm.triggers.createTaskTrigger({
+  name: 'Follow-up Task',
+  eventType: 'opportunity.created',
+  taskTitle: 'Call {{contact.firstName}} about {{opportunity.title}}',
+  priority: 'high',
+  dueDays: 1,
+  conditions: [
+    { field: 'value', operator: 'greater_than', value: 10000 }
+  ],
+});
+```
+
+### Supported Event Types
+
+- **Contact Events**: `contact.created`, `contact.updated`, `contact.deleted`
+- **Opportunity Events**: `opportunity.created`, `opportunity.won`, `opportunity.stage_changed`
+- **Task Events**: `task.created`, `task.completed`, `task.overdue`
+- **Activity Events**: `activity.logged`, `form.submitted`
+
+### Action Types
+
+1. **Send Email** - Automated email notifications with template variables
+2. **Create Task** - Auto-create follow-up tasks
+3. **Webhook** - Call external services (Slack, Zapier, etc.)
+4. **Update Contact** - Automatically update contact fields
+
+📚 **[Full Event Triggers Documentation](./docs/EVENT_TRIGGERS.md)**
 
 ---
 

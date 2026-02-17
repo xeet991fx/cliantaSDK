@@ -5,8 +5,7 @@
  */
 'use strict';
 
-var jsxRuntime = require('react/jsx-runtime');
-var react = require('react');
+var vue = require('vue');
 
 /**
  * Clianta SDK - Configuration
@@ -3749,80 +3748,153 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Clianta SDK - React Integration
+ * Clianta SDK - Vue 3 Integration
  *
- * Provides CliantaProvider component for easy React/Next.js integration
- * using the clianta.config.ts pattern.
+ * Provides plugin and composables for easy Vue 3 integration.
  */
-// Context for accessing tracker throughout the app
-const CliantaContext = react.createContext(null);
+// Injection key for tracker
+const CliantaKey = Symbol('clianta');
 /**
- * CliantaProvider - Wrap your app to enable tracking
+ * Vue plugin for Clianta SDK
  *
  * @example
- * // In clianta.config.ts:
- * import { CliantaConfig } from '@clianta/sdk';
+ * // In main.ts:
+ * import { createApp } from 'vue';
+ * import { CliantaPlugin } from '@clianta/sdk/vue';
+ * import App from './App.vue';
  *
- * const config: CliantaConfig = {
+ * const app = createApp(App);
+ * app.use(CliantaPlugin, {
  *   projectId: 'your-project-id',
  *   apiEndpoint: 'https://api.clianta.online',
- *   debug: process.env.NODE_ENV === 'development',
- * };
- *
- * export default config;
- *
- * // In app/layout.tsx or main.tsx:
- * import { CliantaProvider } from '@clianta/sdk/react';
- * import cliantaConfig from '../clianta.config';
- *
- * <CliantaProvider config={cliantaConfig}>
- *   {children}
- * </CliantaProvider>
+ *   debug: import.meta.env.DEV,
+ * });
+ * app.mount('#app');
  */
-function CliantaProvider({ config, children }) {
-    const trackerRef = react.useRef(null);
-    react.useEffect(() => {
-        // Initialize tracker with config
-        const projectId = config.projectId;
-        if (!projectId) {
-            console.error('[Clianta] Missing projectId in config. Please add projectId to your clianta.config.ts');
+const CliantaPlugin = {
+    install(app, options) {
+        if (!options?.projectId) {
+            console.error('[Clianta] Missing projectId in plugin options');
             return;
         }
-        // Extract projectId (handled separately) and pass rest as options
-        const { projectId: _, ...options } = config;
-        trackerRef.current = clianta(projectId, options);
-        // Cleanup: flush pending events on unmount
-        return () => {
-            trackerRef.current?.flush();
-        };
-    }, [config]);
-    return (jsxRuntime.jsx(CliantaContext.Provider, { value: trackerRef.current, children: children }));
-}
+        const { projectId, ...config } = options;
+        const tracker = clianta(projectId, config);
+        // Provide tracker to all components
+        app.provide(CliantaKey, vue.ref(tracker));
+        // Add global property for Options API access
+        app.config.globalProperties.$clianta = tracker;
+        // Flush on app unmount
+        app.mixin({
+            beforeUnmount() {
+                // Only flush on root component unmount
+                if (this.$.parent === null) {
+                    tracker.flush();
+                }
+            },
+        });
+    },
+};
 /**
- * useClianta - Hook to access tracker in any component
+ * useClianta - Composable to access tracker
  *
  * @example
+ * <script setup>
+ * import { useClianta } from '@clianta/sdk/vue';
+ *
  * const tracker = useClianta();
- * tracker?.track('button_click', 'CTA Button');
+ * tracker.value?.track('button_click', 'CTA Button');
+ * </script>
  */
 function useClianta() {
-    return react.useContext(CliantaContext);
+    const tracker = vue.inject(CliantaKey);
+    if (!tracker) {
+        console.warn('[Clianta] useClianta must be used within a component where CliantaPlugin is installed');
+        return vue.ref(null);
+    }
+    return tracker;
 }
 /**
- * useCliantaTrack - Convenience hook for tracking events
+ * useCliantaTrack - Composable for tracking events
  *
  * @example
+ * <script setup>
+ * import { useCliantaTrack } from '@clianta/sdk/vue';
+ *
  * const track = useCliantaTrack();
  * track('purchase', 'Order Completed', { orderId: '123' });
+ * </script>
  */
 function useCliantaTrack() {
     const tracker = useClianta();
     return (eventType, eventName, properties) => {
-        tracker?.track(eventType, eventName, properties);
+        tracker.value?.track(eventType, eventName, properties);
+    };
+}
+/**
+ * useCliantaIdentify - Composable for identifying users
+ *
+ * @example
+ * <script setup>
+ * import { useCliantaIdentify } from '@clianta/sdk/vue';
+ *
+ * const identify = useCliantaIdentify();
+ * identify('user@example.com', { name: 'John' });
+ * </script>
+ */
+function useCliantaIdentify() {
+    const tracker = useClianta();
+    return (email, traits) => {
+        return tracker.value?.identify(email, traits);
+    };
+}
+/**
+ * useCliantaPageView - Composable for manual page view tracking
+ *
+ * @example
+ * <script setup>
+ * import { useCliantaPageView } from '@clianta/sdk/vue';
+ * import { watch } from 'vue';
+ * import { useRoute } from 'vue-router';
+ *
+ * const route = useRoute();
+ * const trackPageView = useCliantaPageView();
+ *
+ * watch(() => route.path, () => {
+ *   trackPageView(route.name?.toString());
+ * });
+ * </script>
+ */
+function useCliantaPageView() {
+    const tracker = useClianta();
+    return (name, properties) => {
+        tracker.value?.page(name, properties);
+    };
+}
+/**
+ * useCliantaConsent - Composable for managing consent
+ *
+ * @example
+ * <script setup>
+ * import { useCliantaConsent } from '@clianta/sdk/vue';
+ *
+ * const { consent, getConsentState } = useCliantaConsent();
+ * consent({ analytics: true, marketing: false });
+ * </script>
+ */
+function useCliantaConsent() {
+    const tracker = useClianta();
+    return {
+        consent: (state) => {
+            tracker.value?.consent(state);
+        },
+        getConsentState: () => tracker.value?.getConsentState(),
     };
 }
 
-exports.CliantaProvider = CliantaProvider;
+exports.CliantaPlugin = CliantaPlugin;
 exports.useClianta = useClianta;
+exports.useCliantaConsent = useCliantaConsent;
+exports.useCliantaIdentify = useCliantaIdentify;
+exports.useCliantaPageView = useCliantaPageView;
 exports.useCliantaTrack = useCliantaTrack;
-//# sourceMappingURL=react.cjs.js.map
+//# sourceMappingURL=vue.cjs.js.map
