@@ -18,6 +18,7 @@ import { EventQueue } from './queue';
 import { logger } from './logger';
 import { getPlugin } from '../plugins';
 import { ConsentManager } from '../consent';
+import { CRMClient, type InboundEventPayload, type InboundEventResult } from './crm';
 import {
     getOrCreateVisitorId,
     getOrCreateSessionId,
@@ -42,6 +43,8 @@ export class Tracker implements TrackerCore {
     private sessionId: string;
     private isInitialized = false;
     private consentManager: ConsentManager;
+    /** contactId after a successful identify() call */
+    private contactId: string | null = null;
     /** Pending identify retry on next flush */
     private pendingIdentify: { email: string; traits: UserTraits } | null = null;
 
@@ -203,6 +206,11 @@ export class Tracker implements TrackerCore {
             sdkVersion: SDK_VERSION,
         };
 
+        // Attach contactId if known (from a prior identify() call)
+        if (this.contactId) {
+            (event as any).contactId = this.contactId;
+        }
+
         // Check consent before tracking
         if (!this.consentManager.canTrack()) {
             // Buffer event for later if waitForConsent is enabled
@@ -231,12 +239,14 @@ export class Tracker implements TrackerCore {
     }
 
     /**
-     * Identify a visitor
+     * Identify a visitor.
+     * Links the anonymous visitorId to a CRM contact and returns the contactId.
+     * All subsequent track() calls will include the contactId automatically.
      */
-    async identify(email: string, traits: UserTraits = {}): Promise<void> {
+    async identify(email: string, traits: UserTraits = {}): Promise<string | null> {
         if (!email) {
             logger.warn('Email is required for identification');
-            return;
+            return null;
         }
 
         logger.info('Identifying visitor:', email);
@@ -249,13 +259,31 @@ export class Tracker implements TrackerCore {
         });
 
         if (result.success) {
-            logger.info('Visitor identified successfully');
+            logger.info('Visitor identified successfully, contactId:', result.contactId);
+            // Store contactId so all future track() calls include it
+            this.contactId = result.contactId ?? null;
             this.pendingIdentify = null;
+            return this.contactId;
         } else {
             logger.error('Failed to identify visitor:', result.error);
             // Store for retry on next flush
             this.pendingIdentify = { email, traits };
+            return null;
         }
+    }
+
+    /**
+     * Send a server-side inbound event via the API key endpoint.
+     * Convenience proxy to CRMClient.sendEvent() — requires apiKey in config.
+     */
+    async sendEvent(payload: InboundEventPayload): Promise<InboundEventResult> {
+        const apiKey = this.config.apiKey;
+        if (!apiKey) {
+            logger.error('sendEvent() requires an apiKey in the SDK config');
+            return { success: false, contactCreated: false, event: payload.event, error: 'No API key configured' };
+        }
+        const client = new CRMClient(this.config.apiEndpoint, this.workspaceId, undefined, apiKey);
+        return client.sendEvent(payload);
     }
 
     /**

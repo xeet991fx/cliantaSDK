@@ -37,13 +37,40 @@ export class Transport {
     }
 
     /**
-     * Send identify request
+     * Send identify request.
+     * Returns contactId from the server response so the Tracker can store it.
      */
     async sendIdentify(data: IdentifyPayload): Promise<TransportResult> {
         const url = `${this.config.apiEndpoint}/api/public/track/identify`;
-        const payload = JSON.stringify(data);
+        try {
+            const response = await this.fetchWithTimeout(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+                keepalive: true,
+            });
 
-        return this.send(url, payload);
+            const body = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                logger.debug('Identify successful, contactId:', body.contactId);
+                return {
+                    success: true,
+                    status: response.status,
+                    contactId: body.contactId ?? undefined,
+                };
+            }
+
+            if (response.status >= 500) {
+                logger.warn(`Identify server error (${response.status})`);
+            } else {
+                logger.error(`Identify failed with status ${response.status}:`, body.message);
+            }
+            return { success: false, status: response.status };
+        } catch (error) {
+            logger.error('Identify request failed:', error);
+            return { success: false, error: error as Error };
+        }
     }
 
     /**

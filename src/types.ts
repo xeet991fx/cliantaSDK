@@ -14,8 +14,11 @@ export interface CliantaConfig {
     /** Backend API endpoint URL */
     apiEndpoint?: string;
 
-    /** Auth token for server-side API access */
+    /** Auth token for server-side API access (user JWT) */
     authToken?: string;
+
+    /** Workspace API key for server-to-server access (use instead of authToken for external apps) */
+    apiKey?: string;
 
     /** Enable debug mode with verbose logging */
     debug?: boolean;
@@ -208,8 +211,8 @@ export interface TrackerCore {
     /** Track a custom event */
     track(eventType: EventType | string, eventName: string, properties?: Record<string, unknown>): void;
 
-    /** Identify a visitor */
-    identify(email: string, traits?: UserTraits): void;
+    /** Identify a visitor — returns the contactId if successful */
+    identify(email: string, traits?: UserTraits): Promise<string | null>;
 
     /** Track a page view */
     page(name?: string, properties?: Record<string, unknown>): void;
@@ -243,6 +246,9 @@ export interface TrackerCore {
 
     /** Get current consent state */
     getConsentState(): ConsentState;
+
+    /** Send a server-side inbound event (requires apiKey in config) */
+    sendEvent(payload: import('./core/crm').InboundEventPayload): Promise<import('./core/crm').InboundEventResult>;
 }
 
 // ============================================
@@ -260,6 +266,8 @@ export interface TransportResult {
     success: boolean;
     status?: number;
     error?: Error;
+    /** contactId returned from the identify endpoint */
+    contactId?: string;
 }
 
 // ============================================

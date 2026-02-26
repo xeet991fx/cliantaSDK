@@ -13,7 +13,7 @@ describe('Transport', () => {
     beforeEach(() => {
         fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
-        transport = new Transport({ 
+        transport = new Transport({
             apiEndpoint: 'https://api.test.com',
             maxRetries: 2,
             retryDelay: 10,
@@ -111,6 +111,7 @@ describe('Transport', () => {
             fetchMock.mockResolvedValueOnce({
                 ok: true,
                 status: 200,
+                json: () => Promise.resolve({ success: true, contactId: 'contact-abc-123' }),
             });
 
             const payload: IdentifyPayload = {
@@ -123,6 +124,8 @@ describe('Transport', () => {
             const result = await transport.sendIdentify(payload);
 
             expect(result.success).toBe(true);
+            // contactId should be extracted from the response body
+            expect(result.contactId).toBe('contact-abc-123');
             expect(fetchMock).toHaveBeenCalledWith(
                 'https://api.test.com/api/public/track/identify',
                 expect.objectContaining({
@@ -130,6 +133,25 @@ describe('Transport', () => {
                     body: JSON.stringify(payload),
                 })
             );
+        });
+
+        it('should return contactId as undefined when not in response', async () => {
+            fetchMock.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ success: true }),
+            });
+
+            const payload: IdentifyPayload = {
+                workspaceId: 'test-workspace',
+                visitorId: 'test-visitor',
+                email: 'test@example.com',
+                properties: {},
+            };
+
+            const result = await transport.sendIdentify(payload);
+            expect(result.success).toBe(true);
+            expect(result.contactId).toBeUndefined();
         });
     });
 
