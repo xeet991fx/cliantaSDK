@@ -199,7 +199,10 @@ export class Tracker implements TrackerCore {
             eventName,
             url: typeof window !== 'undefined' ? window.location.href : '',
             referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
-            properties,
+            properties: {
+                ...properties,
+                eventId: generateUUID(), // Unique ID for deduplication on retry
+            },
             device: getDeviceInfo(),
             ...getUTMParams(),
             timestamp: new Date().toISOString(),
