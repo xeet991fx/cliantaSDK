@@ -2,6 +2,36 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
 
 /**
+ * Clianta SDK - CRM API Client
+ * @see SDK_VERSION in core/config.ts
+ */
+
+type InboundEventType = 'user.registered' | 'user.updated' | 'user.subscribed' | 'user.unsubscribed' | 'contact.created' | 'contact.updated' | 'purchase.completed';
+interface InboundEventPayload {
+    /** Event type (e.g. "user.registered") */
+    event: InboundEventType;
+    /** Contact data — at least email or phone is required */
+    contact: {
+        email?: string;
+        phone?: string;
+        firstName?: string;
+        lastName?: string;
+        company?: string;
+        jobTitle?: string;
+        tags?: string[];
+    };
+    /** Optional extra data stored as customFields on the contact */
+    data?: Record<string, unknown>;
+}
+interface InboundEventResult {
+    success: boolean;
+    contactCreated: boolean;
+    contactId?: string;
+    event: string;
+    error?: string;
+}
+
+/**
  * Clianta SDK - Type Definitions
  * @see SDK_VERSION in core/config.ts
  */
@@ -10,8 +40,10 @@ interface CliantaConfig {
     projectId?: string;
     /** Backend API endpoint URL */
     apiEndpoint?: string;
-    /** Auth token for server-side API access */
+    /** Auth token for server-side API access (user JWT) */
     authToken?: string;
+    /** Workspace API key for server-to-server access (use instead of authToken for external apps) */
+    apiKey?: string;
     /** Enable debug mode with verbose logging */
     debug?: boolean;
     /** Automatically track page views on load and navigation */
@@ -64,8 +96,8 @@ interface UserTraits {
 interface TrackerCore {
     /** Track a custom event */
     track(eventType: EventType | string, eventName: string, properties?: Record<string, unknown>): void;
-    /** Identify a visitor */
-    identify(email: string, traits?: UserTraits): void;
+    /** Identify a visitor — returns the contactId if successful */
+    identify(email: string, traits?: UserTraits): Promise<string | null>;
     /** Track a page view */
     page(name?: string, properties?: Record<string, unknown>): void;
     /** Update consent state */
@@ -88,6 +120,8 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Send a server-side inbound event (requires apiKey in config) */
+    sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
 }
 
 interface CliantaProviderProps {

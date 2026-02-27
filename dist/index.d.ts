@@ -1,4 +1,501 @@
 /**
+ * Clianta SDK - Event Triggers Manager
+ * Manages event-driven automation and email notifications
+ */
+
+/**
+ * Event Triggers Manager
+ * Handles event-driven automation based on CRM actions
+ *
+ * Similar to:
+ * - Salesforce: Process Builder, Flow Automation
+ * - HubSpot: Workflows, Email Sequences
+ * - Pipedrive: Workflow Automation
+ */
+declare class EventTriggersManager {
+    private apiEndpoint;
+    private workspaceId;
+    private authToken?;
+    private triggers;
+    private listeners;
+    constructor(apiEndpoint: string, workspaceId: string, authToken?: string);
+    /**
+     * Set authentication token
+     */
+    setAuthToken(token: string): void;
+    /**
+     * Make authenticated API request
+     */
+    private request;
+    /**
+     * Get all event triggers
+     */
+    getTriggers(): Promise<ApiResponse<EventTrigger[]>>;
+    /**
+     * Get a single trigger by ID
+     */
+    getTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a new event trigger
+     */
+    createTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Update an existing trigger
+     */
+    updateTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Delete a trigger
+     */
+    deleteTrigger(triggerId: string): Promise<ApiResponse<void>>;
+    /**
+     * Activate a trigger
+     */
+    activateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Deactivate a trigger
+     */
+    deactivateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Register a local event listener for client-side triggers
+     * This allows immediate client-side reactions to events
+     */
+    on(eventType: TriggerEventType, callback: (data: unknown) => void): void;
+    /**
+     * Remove an event listener
+     */
+    off(eventType: TriggerEventType, callback: (data: unknown) => void): void;
+    /**
+     * Emit an event (client-side only)
+     * This will trigger any registered local listeners
+     */
+    emit(eventType: TriggerEventType, data: unknown): void;
+    /**
+     * Check if conditions are met for a trigger
+     * Supports dynamic field evaluation including custom fields and nested paths
+     */
+    private evaluateConditions;
+    /**
+     * Execute actions for a triggered event (client-side preview)
+     * Note: Actual execution happens on the backend
+     */
+    executeActions(trigger: EventTrigger, data: Record<string, unknown>): Promise<void>;
+    /**
+     * Execute a single action
+     */
+    private executeAction;
+    /**
+     * Execute send email action (via backend API)
+     */
+    private executeSendEmail;
+    /**
+     * Execute webhook action
+     */
+    private executeWebhook;
+    /**
+     * Execute create task action
+     */
+    private executeCreateTask;
+    /**
+     * Execute update contact action
+     */
+    private executeUpdateContact;
+    /**
+     * Replace variables in a string template
+     * Supports syntax like {{contact.email}}, {{opportunity.value}}
+     */
+    private replaceVariables;
+    /**
+     * Get nested value from object using dot notation
+     * Supports dynamic field access including custom fields
+     */
+    private getNestedValue;
+    /**
+     * Extract all available field paths from a data object
+     * Useful for dynamic field discovery based on platform-specific attributes
+     * @param obj - The data object to extract fields from
+     * @param prefix - Internal use for nested paths
+     * @param maxDepth - Maximum depth to traverse (default: 3)
+     * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
+     */
+    private extractAvailableFields;
+    /**
+     * Get available fields from sample data
+     * Helps with dynamic field detection for platform-specific attributes
+     * @param sampleData - Sample data object to analyze
+     * @returns Array of available field paths
+     */
+    getAvailableFields(sampleData: Record<string, unknown>): string[];
+    /**
+     * Create a simple email trigger
+     * Helper method for common use case
+     */
+    createEmailTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        to: string;
+        subject: string;
+        body: string;
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a task creation trigger
+     */
+    createTaskTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        taskTitle: string;
+        taskDescription?: string;
+        priority?: 'low' | 'medium' | 'high' | 'urgent';
+        dueDays?: number;
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Create a webhook trigger
+     */
+    createWebhookTrigger(config: {
+        name: string;
+        eventType: TriggerEventType;
+        webhookUrl: string;
+        method?: 'POST' | 'PUT' | 'PATCH';
+        conditions?: TriggerCondition[];
+    }): Promise<ApiResponse<EventTrigger>>;
+}
+
+/**
+ * Clianta SDK - CRM API Client
+ * @see SDK_VERSION in core/config.ts
+ */
+
+type InboundEventType = 'user.registered' | 'user.updated' | 'user.subscribed' | 'user.unsubscribed' | 'contact.created' | 'contact.updated' | 'purchase.completed';
+interface InboundEventPayload {
+    /** Event type (e.g. "user.registered") */
+    event: InboundEventType;
+    /** Contact data — at least email or phone is required */
+    contact: {
+        email?: string;
+        phone?: string;
+        firstName?: string;
+        lastName?: string;
+        company?: string;
+        jobTitle?: string;
+        tags?: string[];
+    };
+    /** Optional extra data stored as customFields on the contact */
+    data?: Record<string, unknown>;
+}
+interface InboundEventResult {
+    success: boolean;
+    contactCreated: boolean;
+    contactId?: string;
+    event: string;
+    error?: string;
+}
+/**
+ * CRM API Client for managing contacts and opportunities
+ */
+declare class CRMClient {
+    private apiEndpoint;
+    private workspaceId;
+    private authToken?;
+    private apiKey?;
+    triggers: EventTriggersManager;
+    constructor(apiEndpoint: string, workspaceId: string, authToken?: string, apiKey?: string);
+    /**
+     * Set authentication token for API requests (user JWT)
+     */
+    setAuthToken(token: string): void;
+    /**
+     * Set workspace API key for server-to-server requests.
+     * Use this instead of setAuthToken when integrating from an external app.
+     */
+    setApiKey(key: string): void;
+    /**
+     * Validate required parameter exists
+     * @throws {Error} if value is null/undefined or empty string
+     */
+    private validateRequired;
+    /**
+     * Make authenticated API request
+     */
+    private request;
+    /**
+     * Send an inbound event from an external app (e.g. user signup on client website).
+     * Requires the client to be initialized with an API key via setApiKey() or the constructor.
+     *
+     * The contact is upserted in the CRM and matching workflow automations fire automatically.
+     *
+     * @example
+     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * crm.setApiKey('mm_live_...');
+     *
+     * await crm.sendEvent({
+     *   event: 'user.registered',
+     *   contact: { email: 'alice@example.com', firstName: 'Alice' },
+     *   data: { plan: 'free', signupSource: 'homepage' },
+     * });
+     */
+    sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
+    /**
+     * Get all contacts with pagination
+     */
+    getContacts(params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
+    /**
+     * Get a single contact by ID
+     */
+    getContact(contactId: string): Promise<ApiResponse<Contact>>;
+    /**
+     * Create a new contact
+     */
+    createContact(contact: Partial<Contact>): Promise<ApiResponse<Contact>>;
+    /**
+     * Update an existing contact
+     */
+    updateContact(contactId: string, updates: Partial<Contact>): Promise<ApiResponse<Contact>>;
+    /**
+     * Delete a contact
+     */
+    deleteContact(contactId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get all opportunities with pagination
+     */
+    getOpportunities(params?: {
+        page?: number;
+        limit?: number;
+        pipelineId?: string;
+        stageId?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Opportunity>>>;
+    /**
+     * Get a single opportunity by ID
+     */
+    getOpportunity(opportunityId: string): Promise<ApiResponse<Opportunity>>;
+    /**
+     * Create a new opportunity
+     */
+    createOpportunity(opportunity: Partial<Opportunity>): Promise<ApiResponse<Opportunity>>;
+    /**
+     * Update an existing opportunity
+     */
+    updateOpportunity(opportunityId: string, updates: Partial<Opportunity>): Promise<ApiResponse<Opportunity>>;
+    /**
+     * Delete an opportunity
+     */
+    deleteOpportunity(opportunityId: string): Promise<ApiResponse<void>>;
+    /**
+     * Move opportunity to a different stage
+     */
+    moveOpportunity(opportunityId: string, stageId: string): Promise<ApiResponse<Opportunity>>;
+    /**
+     * Get all companies with pagination
+     */
+    getCompanies(params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: string;
+        industry?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Company>>>;
+    /**
+     * Get a single company by ID
+     */
+    getCompany(companyId: string): Promise<ApiResponse<Company>>;
+    /**
+     * Create a new company
+     */
+    createCompany(company: Partial<Company>): Promise<ApiResponse<Company>>;
+    /**
+     * Update an existing company
+     */
+    updateCompany(companyId: string, updates: Partial<Company>): Promise<ApiResponse<Company>>;
+    /**
+     * Delete a company
+     */
+    deleteCompany(companyId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get contacts belonging to a company
+     */
+    getCompanyContacts(companyId: string, params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
+    /**
+     * Get deals/opportunities belonging to a company
+     */
+    getCompanyDeals(companyId: string, params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Opportunity>>>;
+    /**
+     * Get all pipelines
+     */
+    getPipelines(): Promise<ApiResponse<Pipeline[]>>;
+    /**
+     * Get a single pipeline by ID
+     */
+    getPipeline(pipelineId: string): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Create a new pipeline
+     */
+    createPipeline(pipeline: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Update an existing pipeline
+     */
+    updatePipeline(pipelineId: string, updates: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
+    /**
+     * Delete a pipeline
+     */
+    deletePipeline(pipelineId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get all tasks with pagination
+     */
+    getTasks(params?: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        priority?: string;
+        contactId?: string;
+        companyId?: string;
+        opportunityId?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Task>>>;
+    /**
+     * Get a single task by ID
+     */
+    getTask(taskId: string): Promise<ApiResponse<Task>>;
+    /**
+     * Create a new task
+     */
+    createTask(task: Partial<Task>): Promise<ApiResponse<Task>>;
+    /**
+     * Update an existing task
+     */
+    updateTask(taskId: string, updates: Partial<Task>): Promise<ApiResponse<Task>>;
+    /**
+     * Mark a task as completed
+     */
+    completeTask(taskId: string): Promise<ApiResponse<Task>>;
+    /**
+     * Delete a task
+     */
+    deleteTask(taskId: string): Promise<ApiResponse<void>>;
+    /**
+     * Get activities for a contact
+     */
+    getContactActivities(contactId: string, params?: {
+        page?: number;
+        limit?: number;
+        type?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
+    /**
+     * Get activities for an opportunity/deal
+     */
+    getOpportunityActivities(opportunityId: string, params?: {
+        page?: number;
+        limit?: number;
+        type?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
+    /**
+     * Create a new activity
+     */
+    createActivity(activity: Partial<Activity>): Promise<ApiResponse<Activity>>;
+    /**
+     * Update an existing activity
+     */
+    updateActivity(activityId: string, updates: Partial<Activity>): Promise<ApiResponse<Activity>>;
+    /**
+     * Delete an activity
+     */
+    deleteActivity(activityId: string): Promise<ApiResponse<void>>;
+    /**
+     * Log a call activity
+     */
+    logCall(data: {
+        contactId?: string;
+        opportunityId?: string;
+        direction: 'inbound' | 'outbound';
+        duration?: number;
+        outcome?: string;
+        notes?: string;
+    }): Promise<ApiResponse<Activity>>;
+    /**
+     * Log a meeting activity
+     */
+    logMeeting(data: {
+        contactId?: string;
+        opportunityId?: string;
+        title: string;
+        duration?: number;
+        outcome?: string;
+        notes?: string;
+    }): Promise<ApiResponse<Activity>>;
+    /**
+     * Add a note to a contact or opportunity
+     */
+    addNote(data: {
+        contactId?: string;
+        opportunityId?: string;
+        content: string;
+    }): Promise<ApiResponse<Activity>>;
+    /**
+     * Get all email templates
+     */
+    getEmailTemplates(params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<EmailTemplate>>>;
+    /**
+     * Get a single email template by ID
+     */
+    getEmailTemplate(templateId: string): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Create a new email template
+     */
+    createEmailTemplate(template: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Update an email template
+     */
+    updateEmailTemplate(templateId: string, updates: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
+    /**
+     * Delete an email template
+     */
+    deleteEmailTemplate(templateId: string): Promise<ApiResponse<void>>;
+    /**
+     * Send an email using a template
+     */
+    sendEmail(data: {
+        to: string;
+        templateId?: string;
+        subject?: string;
+        body?: string;
+        cc?: string[];
+        bcc?: string[];
+        variables?: Record<string, unknown>;
+        contactId?: string;
+    }): Promise<ApiResponse<{
+        messageId: string;
+    }>>;
+    /**
+     * Get all event triggers
+     */
+    getEventTriggers(): Promise<ApiResponse<EventTrigger[]>>;
+    /**
+     * Create a new event trigger
+     */
+    createEventTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Update an event trigger
+     */
+    updateEventTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
+    /**
+     * Delete an event trigger
+     */
+    deleteEventTrigger(triggerId: string): Promise<ApiResponse<void>>;
+}
+
+/**
  * Clianta SDK - Type Definitions
  * @see SDK_VERSION in core/config.ts
  */
@@ -7,8 +504,10 @@ interface CliantaConfig {
     projectId?: string;
     /** Backend API endpoint URL */
     apiEndpoint?: string;
-    /** Auth token for server-side API access */
+    /** Auth token for server-side API access (user JWT) */
     authToken?: string;
+    /** Workspace API key for server-to-server access (use instead of authToken for external apps) */
+    apiKey?: string;
     /** Enable debug mode with verbose logging */
     debug?: boolean;
     /** Automatically track page views on load and navigation */
@@ -108,8 +607,8 @@ interface Plugin {
 interface TrackerCore {
     /** Track a custom event */
     track(eventType: EventType | string, eventName: string, properties?: Record<string, unknown>): void;
-    /** Identify a visitor */
-    identify(email: string, traits?: UserTraits): void;
+    /** Identify a visitor — returns the contactId if successful */
+    identify(email: string, traits?: UserTraits): Promise<string | null>;
     /** Track a page view */
     page(name?: string, properties?: Record<string, unknown>): void;
     /** Update consent state */
@@ -132,6 +631,8 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Send a server-side inbound event (requires apiKey in config) */
+    sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
 }
 interface Contact {
     _id?: string;
@@ -410,6 +911,8 @@ declare class Tracker implements TrackerCore {
     private sessionId;
     private isInitialized;
     private consentManager;
+    /** contactId after a successful identify() call */
+    private contactId;
     /** Pending identify retry on next flush */
     private pendingIdentify;
     constructor(workspaceId: string, userConfig?: CliantaConfig);
@@ -439,9 +942,16 @@ declare class Tracker implements TrackerCore {
      */
     page(name?: string, properties?: Record<string, unknown>): void;
     /**
-     * Identify a visitor
+     * Identify a visitor.
+     * Links the anonymous visitorId to a CRM contact and returns the contactId.
+     * All subsequent track() calls will include the contactId automatically.
      */
-    identify(email: string, traits?: UserTraits): Promise<void>;
+    identify(email: string, traits?: UserTraits): Promise<string | null>;
+    /**
+     * Send a server-side inbound event via the API key endpoint.
+     * Convenience proxy to CRMClient.sendEvent() — requires apiKey in config.
+     */
+    sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
     /**
      * Retry pending identify call
      */
@@ -490,456 +1000,6 @@ declare class Tracker implements TrackerCore {
      * Destroy tracker and cleanup
      */
     destroy(): Promise<void>;
-}
-
-/**
- * Clianta SDK - Event Triggers Manager
- * Manages event-driven automation and email notifications
- */
-
-/**
- * Event Triggers Manager
- * Handles event-driven automation based on CRM actions
- *
- * Similar to:
- * - Salesforce: Process Builder, Flow Automation
- * - HubSpot: Workflows, Email Sequences
- * - Pipedrive: Workflow Automation
- */
-declare class EventTriggersManager {
-    private apiEndpoint;
-    private workspaceId;
-    private authToken?;
-    private triggers;
-    private listeners;
-    constructor(apiEndpoint: string, workspaceId: string, authToken?: string);
-    /**
-     * Set authentication token
-     */
-    setAuthToken(token: string): void;
-    /**
-     * Make authenticated API request
-     */
-    private request;
-    /**
-     * Get all event triggers
-     */
-    getTriggers(): Promise<ApiResponse<EventTrigger[]>>;
-    /**
-     * Get a single trigger by ID
-     */
-    getTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Create a new event trigger
-     */
-    createTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Update an existing trigger
-     */
-    updateTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Delete a trigger
-     */
-    deleteTrigger(triggerId: string): Promise<ApiResponse<void>>;
-    /**
-     * Activate a trigger
-     */
-    activateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Deactivate a trigger
-     */
-    deactivateTrigger(triggerId: string): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Register a local event listener for client-side triggers
-     * This allows immediate client-side reactions to events
-     */
-    on(eventType: TriggerEventType, callback: (data: unknown) => void): void;
-    /**
-     * Remove an event listener
-     */
-    off(eventType: TriggerEventType, callback: (data: unknown) => void): void;
-    /**
-     * Emit an event (client-side only)
-     * This will trigger any registered local listeners
-     */
-    emit(eventType: TriggerEventType, data: unknown): void;
-    /**
-     * Check if conditions are met for a trigger
-     * Supports dynamic field evaluation including custom fields and nested paths
-     */
-    private evaluateConditions;
-    /**
-     * Execute actions for a triggered event (client-side preview)
-     * Note: Actual execution happens on the backend
-     */
-    executeActions(trigger: EventTrigger, data: Record<string, unknown>): Promise<void>;
-    /**
-     * Execute a single action
-     */
-    private executeAction;
-    /**
-     * Execute send email action (via backend API)
-     */
-    private executeSendEmail;
-    /**
-     * Execute webhook action
-     */
-    private executeWebhook;
-    /**
-     * Execute create task action
-     */
-    private executeCreateTask;
-    /**
-     * Execute update contact action
-     */
-    private executeUpdateContact;
-    /**
-     * Replace variables in a string template
-     * Supports syntax like {{contact.email}}, {{opportunity.value}}
-     */
-    private replaceVariables;
-    /**
-     * Get nested value from object using dot notation
-     * Supports dynamic field access including custom fields
-     */
-    private getNestedValue;
-    /**
-     * Extract all available field paths from a data object
-     * Useful for dynamic field discovery based on platform-specific attributes
-     * @param obj - The data object to extract fields from
-     * @param prefix - Internal use for nested paths
-     * @param maxDepth - Maximum depth to traverse (default: 3)
-     * @returns Array of field paths (e.g., ['email', 'contact.firstName', 'customFields.industry'])
-     */
-    private extractAvailableFields;
-    /**
-     * Get available fields from sample data
-     * Helps with dynamic field detection for platform-specific attributes
-     * @param sampleData - Sample data object to analyze
-     * @returns Array of available field paths
-     */
-    getAvailableFields(sampleData: Record<string, unknown>): string[];
-    /**
-     * Create a simple email trigger
-     * Helper method for common use case
-     */
-    createEmailTrigger(config: {
-        name: string;
-        eventType: TriggerEventType;
-        to: string;
-        subject: string;
-        body: string;
-        conditions?: TriggerCondition[];
-    }): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Create a task creation trigger
-     */
-    createTaskTrigger(config: {
-        name: string;
-        eventType: TriggerEventType;
-        taskTitle: string;
-        taskDescription?: string;
-        priority?: 'low' | 'medium' | 'high' | 'urgent';
-        dueDays?: number;
-        conditions?: TriggerCondition[];
-    }): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Create a webhook trigger
-     */
-    createWebhookTrigger(config: {
-        name: string;
-        eventType: TriggerEventType;
-        webhookUrl: string;
-        method?: 'POST' | 'PUT' | 'PATCH';
-        conditions?: TriggerCondition[];
-    }): Promise<ApiResponse<EventTrigger>>;
-}
-
-/**
- * Clianta SDK - CRM API Client
- * @see SDK_VERSION in core/config.ts
- */
-
-/**
- * CRM API Client for managing contacts and opportunities
- */
-declare class CRMClient {
-    private apiEndpoint;
-    private workspaceId;
-    private authToken?;
-    triggers: EventTriggersManager;
-    constructor(apiEndpoint: string, workspaceId: string, authToken?: string);
-    /**
-     * Set authentication token for API requests
-     */
-    setAuthToken(token: string): void;
-    /**
-     * Validate required parameter exists
-     * @throws {Error} if value is null/undefined or empty string
-     */
-    private validateRequired;
-    /**
-     * Make authenticated API request
-     */
-    private request;
-    /**
-     * Get all contacts with pagination
-     */
-    getContacts(params?: {
-        page?: number;
-        limit?: number;
-        search?: string;
-        status?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
-    /**
-     * Get a single contact by ID
-     */
-    getContact(contactId: string): Promise<ApiResponse<Contact>>;
-    /**
-     * Create a new contact
-     */
-    createContact(contact: Partial<Contact>): Promise<ApiResponse<Contact>>;
-    /**
-     * Update an existing contact
-     */
-    updateContact(contactId: string, updates: Partial<Contact>): Promise<ApiResponse<Contact>>;
-    /**
-     * Delete a contact
-     */
-    deleteContact(contactId: string): Promise<ApiResponse<void>>;
-    /**
-     * Get all opportunities with pagination
-     */
-    getOpportunities(params?: {
-        page?: number;
-        limit?: number;
-        pipelineId?: string;
-        stageId?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Opportunity>>>;
-    /**
-     * Get a single opportunity by ID
-     */
-    getOpportunity(opportunityId: string): Promise<ApiResponse<Opportunity>>;
-    /**
-     * Create a new opportunity
-     */
-    createOpportunity(opportunity: Partial<Opportunity>): Promise<ApiResponse<Opportunity>>;
-    /**
-     * Update an existing opportunity
-     */
-    updateOpportunity(opportunityId: string, updates: Partial<Opportunity>): Promise<ApiResponse<Opportunity>>;
-    /**
-     * Delete an opportunity
-     */
-    deleteOpportunity(opportunityId: string): Promise<ApiResponse<void>>;
-    /**
-     * Move opportunity to a different stage
-     */
-    moveOpportunity(opportunityId: string, stageId: string): Promise<ApiResponse<Opportunity>>;
-    /**
-     * Get all companies with pagination
-     */
-    getCompanies(params?: {
-        page?: number;
-        limit?: number;
-        search?: string;
-        status?: string;
-        industry?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Company>>>;
-    /**
-     * Get a single company by ID
-     */
-    getCompany(companyId: string): Promise<ApiResponse<Company>>;
-    /**
-     * Create a new company
-     */
-    createCompany(company: Partial<Company>): Promise<ApiResponse<Company>>;
-    /**
-     * Update an existing company
-     */
-    updateCompany(companyId: string, updates: Partial<Company>): Promise<ApiResponse<Company>>;
-    /**
-     * Delete a company
-     */
-    deleteCompany(companyId: string): Promise<ApiResponse<void>>;
-    /**
-     * Get contacts belonging to a company
-     */
-    getCompanyContacts(companyId: string, params?: {
-        page?: number;
-        limit?: number;
-    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
-    /**
-     * Get deals/opportunities belonging to a company
-     */
-    getCompanyDeals(companyId: string, params?: {
-        page?: number;
-        limit?: number;
-    }): Promise<ApiResponse<PaginatedResponse<Opportunity>>>;
-    /**
-     * Get all pipelines
-     */
-    getPipelines(): Promise<ApiResponse<Pipeline[]>>;
-    /**
-     * Get a single pipeline by ID
-     */
-    getPipeline(pipelineId: string): Promise<ApiResponse<Pipeline>>;
-    /**
-     * Create a new pipeline
-     */
-    createPipeline(pipeline: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
-    /**
-     * Update an existing pipeline
-     */
-    updatePipeline(pipelineId: string, updates: Partial<Pipeline>): Promise<ApiResponse<Pipeline>>;
-    /**
-     * Delete a pipeline
-     */
-    deletePipeline(pipelineId: string): Promise<ApiResponse<void>>;
-    /**
-     * Get all tasks with pagination
-     */
-    getTasks(params?: {
-        page?: number;
-        limit?: number;
-        status?: string;
-        priority?: string;
-        contactId?: string;
-        companyId?: string;
-        opportunityId?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Task>>>;
-    /**
-     * Get a single task by ID
-     */
-    getTask(taskId: string): Promise<ApiResponse<Task>>;
-    /**
-     * Create a new task
-     */
-    createTask(task: Partial<Task>): Promise<ApiResponse<Task>>;
-    /**
-     * Update an existing task
-     */
-    updateTask(taskId: string, updates: Partial<Task>): Promise<ApiResponse<Task>>;
-    /**
-     * Mark a task as completed
-     */
-    completeTask(taskId: string): Promise<ApiResponse<Task>>;
-    /**
-     * Delete a task
-     */
-    deleteTask(taskId: string): Promise<ApiResponse<void>>;
-    /**
-     * Get activities for a contact
-     */
-    getContactActivities(contactId: string, params?: {
-        page?: number;
-        limit?: number;
-        type?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
-    /**
-     * Get activities for an opportunity/deal
-     */
-    getOpportunityActivities(opportunityId: string, params?: {
-        page?: number;
-        limit?: number;
-        type?: string;
-    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
-    /**
-     * Create a new activity
-     */
-    createActivity(activity: Partial<Activity>): Promise<ApiResponse<Activity>>;
-    /**
-     * Update an existing activity
-     */
-    updateActivity(activityId: string, updates: Partial<Activity>): Promise<ApiResponse<Activity>>;
-    /**
-     * Delete an activity
-     */
-    deleteActivity(activityId: string): Promise<ApiResponse<void>>;
-    /**
-     * Log a call activity
-     */
-    logCall(data: {
-        contactId?: string;
-        opportunityId?: string;
-        direction: 'inbound' | 'outbound';
-        duration?: number;
-        outcome?: string;
-        notes?: string;
-    }): Promise<ApiResponse<Activity>>;
-    /**
-     * Log a meeting activity
-     */
-    logMeeting(data: {
-        contactId?: string;
-        opportunityId?: string;
-        title: string;
-        duration?: number;
-        outcome?: string;
-        notes?: string;
-    }): Promise<ApiResponse<Activity>>;
-    /**
-     * Add a note to a contact or opportunity
-     */
-    addNote(data: {
-        contactId?: string;
-        opportunityId?: string;
-        content: string;
-    }): Promise<ApiResponse<Activity>>;
-    /**
-     * Get all email templates
-     */
-    getEmailTemplates(params?: {
-        page?: number;
-        limit?: number;
-    }): Promise<ApiResponse<PaginatedResponse<EmailTemplate>>>;
-    /**
-     * Get a single email template by ID
-     */
-    getEmailTemplate(templateId: string): Promise<ApiResponse<EmailTemplate>>;
-    /**
-     * Create a new email template
-     */
-    createEmailTemplate(template: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
-    /**
-     * Update an email template
-     */
-    updateEmailTemplate(templateId: string, updates: Partial<EmailTemplate>): Promise<ApiResponse<EmailTemplate>>;
-    /**
-     * Delete an email template
-     */
-    deleteEmailTemplate(templateId: string): Promise<ApiResponse<void>>;
-    /**
-     * Send an email using a template
-     */
-    sendEmail(data: {
-        to: string;
-        templateId?: string;
-        subject?: string;
-        body?: string;
-        cc?: string[];
-        bcc?: string[];
-        variables?: Record<string, unknown>;
-        contactId?: string;
-    }): Promise<ApiResponse<{
-        messageId: string;
-    }>>;
-    /**
-     * Get all event triggers
-     */
-    getEventTriggers(): Promise<ApiResponse<EventTrigger[]>>;
-    /**
-     * Create a new event trigger
-     */
-    createEventTrigger(trigger: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Update an event trigger
-     */
-    updateEventTrigger(triggerId: string, updates: Partial<EventTrigger>): Promise<ApiResponse<EventTrigger>>;
-    /**
-     * Delete an event trigger
-     */
-    deleteEventTrigger(triggerId: string): Promise<ApiResponse<void>>;
 }
 
 /**
@@ -1038,7 +1098,7 @@ interface StoredConsent {
  */
 
 /** SDK Version */
-declare const SDK_VERSION = "1.3.0";
+declare const SDK_VERSION = "1.4.0";
 
 /**
  * Clianta SDK
@@ -1073,4 +1133,4 @@ declare const SDK_VERSION = "1.3.0";
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
 export { CRMClient, ConsentManager, EventTriggersManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactUpdateAction, EmailAction, EmailTemplate, EventTrigger, EventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, WebhookAction };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactUpdateAction, EmailAction, EmailTemplate, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, WebhookAction };

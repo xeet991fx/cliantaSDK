@@ -17,6 +17,41 @@ import type {
 } from '../types';
 import { EventTriggersManager } from './triggers';
 
+// Supported event types for the inbound events endpoint
+export type InboundEventType =
+    | 'user.registered'
+    | 'user.updated'
+    | 'user.subscribed'
+    | 'user.unsubscribed'
+    | 'contact.created'
+    | 'contact.updated'
+    | 'purchase.completed';
+
+export interface InboundEventPayload {
+    /** Event type (e.g. "user.registered") */
+    event: InboundEventType;
+    /** Contact data — at least email or phone is required */
+    contact: {
+        email?: string;
+        phone?: string;
+        firstName?: string;
+        lastName?: string;
+        company?: string;
+        jobTitle?: string;
+        tags?: string[];
+    };
+    /** Optional extra data stored as customFields on the contact */
+    data?: Record<string, unknown>;
+}
+
+export interface InboundEventResult {
+    success: boolean;
+    contactCreated: boolean;
+    contactId?: string;
+    event: string;
+    error?: string;
+}
+
 /**
  * CRM API Client for managing contacts and opportunities
  */
@@ -24,21 +59,33 @@ export class CRMClient {
     private apiEndpoint: string;
     private workspaceId: string;
     private authToken?: string;
+    private apiKey?: string;
     public triggers: EventTriggersManager;
 
-    constructor(apiEndpoint: string, workspaceId: string, authToken?: string) {
+    constructor(apiEndpoint: string, workspaceId: string, authToken?: string, apiKey?: string) {
         this.apiEndpoint = apiEndpoint;
         this.workspaceId = workspaceId;
         this.authToken = authToken;
+        this.apiKey = apiKey;
         this.triggers = new EventTriggersManager(apiEndpoint, workspaceId, authToken);
     }
 
     /**
-     * Set authentication token for API requests
+     * Set authentication token for API requests (user JWT)
      */
     setAuthToken(token: string): void {
         this.authToken = token;
+        this.apiKey = undefined;
         this.triggers.setAuthToken(token);
+    }
+
+    /**
+     * Set workspace API key for server-to-server requests.
+     * Use this instead of setAuthToken when integrating from an external app.
+     */
+    setApiKey(key: string): void {
+        this.apiKey = key;
+        this.authToken = undefined;
     }
 
     /**
@@ -64,7 +111,9 @@ export class CRMClient {
             ...(options.headers as Record<string, string> || {}),
         };
 
-        if (this.authToken) {
+        if (this.apiKey) {
+            headers['X-Api-Key'] = this.apiKey;
+        } else if (this.authToken) {
             headers['Authorization'] = `Bearer ${this.authToken}`;
         }
 
@@ -94,6 +143,70 @@ export class CRMClient {
                 success: false,
                 error: error instanceof Error ? error.message : 'Network error',
                 status: 0,
+            };
+        }
+    }
+
+    // ============================================
+    // INBOUND EVENTS API (API-key authenticated)
+    // ============================================
+
+    /**
+     * Send an inbound event from an external app (e.g. user signup on client website).
+     * Requires the client to be initialized with an API key via setApiKey() or the constructor.
+     *
+     * The contact is upserted in the CRM and matching workflow automations fire automatically.
+     *
+     * @example
+     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * crm.setApiKey('mm_live_...');
+     *
+     * await crm.sendEvent({
+     *   event: 'user.registered',
+     *   contact: { email: 'alice@example.com', firstName: 'Alice' },
+     *   data: { plan: 'free', signupSource: 'homepage' },
+     * });
+     */
+    async sendEvent(payload: InboundEventPayload): Promise<InboundEventResult> {
+        const url = `${this.apiEndpoint}/api/public/events`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+        if (this.apiKey) {
+            headers['X-Api-Key'] = this.apiKey;
+        } else if (this.authToken) {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return {
+                    success: false,
+                    contactCreated: false,
+                    event: payload.event,
+                    error: data.error || 'Request failed',
+                };
+            }
+
+            return {
+                success: data.success,
+                contactCreated: data.contactCreated,
+                contactId: data.contactId,
+                event: data.event,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                contactCreated: false,
+                event: payload.event,
+                error: error instanceof Error ? error.message : 'Network error',
             };
         }
     }

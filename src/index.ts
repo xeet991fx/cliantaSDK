@@ -51,6 +51,9 @@ export { SDK_VERSION } from './core/config';
 // Export Tracker, CRM, Triggers, and Consent classes for direct use
 export { Tracker, CRMClient, ConsentManager, EventTriggersManager };
 
+// Export inbound event types from CRMClient
+export type { InboundEventType, InboundEventPayload, InboundEventResult } from './core/crm';
+
 // Global instance cache
 let globalInstance: Tracker | null = null;
 

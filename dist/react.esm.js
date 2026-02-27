@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.3.0
+ * Clianta SDK v1.4.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -11,7 +11,7 @@ import { createContext, useRef, useEffect, useContext } from 'react';
  * @see SDK_VERSION in core/config.ts
  */
 /** SDK Version */
-const SDK_VERSION = '1.3.0';
+const SDK_VERSION = '1.4.0';
 /** Default API endpoint based on environment */
 const getDefaultApiEndpoint = () => {
     if (typeof window === 'undefined')
@@ -37,6 +37,7 @@ const DEFAULT_CONFIG = {
     projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
     authToken: '',
+    apiKey: '',
     debug: false,
     autoPageView: true,
     plugins: DEFAULT_PLUGINS,
@@ -184,12 +185,39 @@ class Transport {
         return this.send(url, payload);
     }
     /**
-     * Send identify request
+     * Send identify request.
+     * Returns contactId from the server response so the Tracker can store it.
      */
     async sendIdentify(data) {
         const url = `${this.config.apiEndpoint}/api/public/track/identify`;
-        const payload = JSON.stringify(data);
-        return this.send(url, payload);
+        try {
+            const response = await this.fetchWithTimeout(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+                keepalive: true,
+            });
+            const body = await response.json().catch(() => ({}));
+            if (response.ok) {
+                logger.debug('Identify successful, contactId:', body.contactId);
+                return {
+                    success: true,
+                    status: response.status,
+                    contactId: body.contactId ?? undefined,
+                };
+            }
+            if (response.status >= 500) {
+                logger.warn(`Identify server error (${response.status})`);
+            }
+            else {
+                logger.error(`Identify failed with status ${response.status}:`, body.message);
+            }
+            return { success: false, status: response.status };
+        }
+        catch (error) {
+            logger.error('Identify request failed:', error);
+            return { success: false, error: error };
+        }
     }
     /**
      * Send events synchronously (for page unload)
@@ -2364,330 +2392,6 @@ class ConsentManager {
 }
 
 /**
- * Clianta SDK - Main Tracker Class
- * @see SDK_VERSION in core/config.ts
- */
-/**
- * Main Clianta Tracker Class
- */
-class Tracker {
-    constructor(workspaceId, userConfig = {}) {
-        this.plugins = [];
-        this.isInitialized = false;
-        /** Pending identify retry on next flush */
-        this.pendingIdentify = null;
-        if (!workspaceId) {
-            throw new Error('[Clianta] Workspace ID is required');
-        }
-        this.workspaceId = workspaceId;
-        this.config = mergeConfig(userConfig);
-        // Setup debug mode
-        logger.enabled = this.config.debug;
-        logger.info(`Initializing SDK v${SDK_VERSION}`, { workspaceId });
-        // Initialize consent manager
-        this.consentManager = new ConsentManager({
-            ...this.config.consent,
-            onConsentChange: (state, previous) => {
-                this.onConsentChange(state, previous);
-            },
-        });
-        // Initialize transport and queue
-        this.transport = new Transport({ apiEndpoint: this.config.apiEndpoint });
-        this.queue = new EventQueue(this.transport, {
-            batchSize: this.config.batchSize,
-            flushInterval: this.config.flushInterval,
-        });
-        // Get or create visitor and session IDs based on mode
-        this.visitorId = this.createVisitorId();
-        this.sessionId = this.createSessionId();
-        logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
-        // Initialize plugins
-        this.initPlugins();
-        this.isInitialized = true;
-        logger.info('SDK initialized successfully');
-    }
-    /**
-     * Create visitor ID based on storage mode
-     */
-    createVisitorId() {
-        // Anonymous mode: use temporary ID until consent
-        if (this.config.consent.anonymousMode && !this.consentManager.hasExplicit()) {
-            const key = STORAGE_KEYS.VISITOR_ID + '_anon';
-            let anonId = getSessionStorage(key);
-            if (!anonId) {
-                anonId = 'anon_' + generateUUID();
-                setSessionStorage(key, anonId);
-            }
-            return anonId;
-        }
-        // Cookie-less mode: use sessionStorage only
-        if (this.config.cookielessMode) {
-            let visitorId = getSessionStorage(STORAGE_KEYS.VISITOR_ID);
-            if (!visitorId) {
-                visitorId = generateUUID();
-                setSessionStorage(STORAGE_KEYS.VISITOR_ID, visitorId);
-            }
-            return visitorId;
-        }
-        // Normal mode
-        return getOrCreateVisitorId(this.config.useCookies);
-    }
-    /**
-     * Create session ID
-     */
-    createSessionId() {
-        return getOrCreateSessionId(this.config.sessionTimeout);
-    }
-    /**
-     * Handle consent state changes
-     */
-    onConsentChange(state, previous) {
-        logger.debug('Consent changed:', { from: previous, to: state });
-        // If analytics consent was just granted
-        if (state.analytics && !previous.analytics) {
-            // Upgrade from anonymous ID to persistent ID
-            if (this.config.consent.anonymousMode) {
-                this.visitorId = getOrCreateVisitorId(this.config.useCookies);
-                logger.info('Upgraded from anonymous to persistent visitor ID');
-            }
-            // Flush buffered events
-            const buffered = this.consentManager.flushBuffer();
-            for (const event of buffered) {
-                // Update event with new visitor ID
-                event.visitorId = this.visitorId;
-                this.queue.push(event);
-            }
-        }
-    }
-    /**
-     * Initialize enabled plugins
-     * Handles both sync and async plugin init methods
-     */
-    initPlugins() {
-        const pluginsToLoad = this.config.plugins;
-        // Skip pageView plugin if autoPageView is disabled
-        const filteredPlugins = this.config.autoPageView
-            ? pluginsToLoad
-            : pluginsToLoad.filter((p) => p !== 'pageView');
-        for (const pluginName of filteredPlugins) {
-            try {
-                const plugin = getPlugin(pluginName);
-                // Handle both sync and async init (fire-and-forget for async)
-                const result = plugin.init(this);
-                if (result instanceof Promise) {
-                    result.catch((error) => {
-                        logger.error(`Async plugin init failed: ${pluginName}`, error);
-                    });
-                }
-                this.plugins.push(plugin);
-                logger.debug(`Plugin loaded: ${pluginName}`);
-            }
-            catch (error) {
-                logger.error(`Failed to load plugin: ${pluginName}`, error);
-            }
-        }
-    }
-    /**
-     * Track a custom event
-     */
-    track(eventType, eventName, properties = {}) {
-        if (!this.isInitialized) {
-            logger.warn('SDK not initialized, event dropped');
-            return;
-        }
-        const event = {
-            workspaceId: this.workspaceId,
-            visitorId: this.visitorId,
-            sessionId: this.sessionId,
-            eventType: eventType,
-            eventName,
-            url: typeof window !== 'undefined' ? window.location.href : '',
-            referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
-            properties,
-            device: getDeviceInfo(),
-            ...getUTMParams(),
-            timestamp: new Date().toISOString(),
-            sdkVersion: SDK_VERSION,
-        };
-        // Check consent before tracking
-        if (!this.consentManager.canTrack()) {
-            // Buffer event for later if waitForConsent is enabled
-            if (this.config.consent.waitForConsent) {
-                this.consentManager.bufferEvent(event);
-                return;
-            }
-            // Otherwise drop the event
-            logger.debug('Event dropped (no consent):', eventName);
-            return;
-        }
-        this.queue.push(event);
-        logger.debug('Event tracked:', eventName, properties);
-    }
-    /**
-     * Track a page view
-     */
-    page(name, properties = {}) {
-        const pageName = name || (typeof document !== 'undefined' ? document.title : 'Page View');
-        this.track('page_view', pageName, {
-            ...properties,
-            path: typeof window !== 'undefined' ? window.location.pathname : '',
-        });
-    }
-    /**
-     * Identify a visitor
-     */
-    async identify(email, traits = {}) {
-        if (!email) {
-            logger.warn('Email is required for identification');
-            return;
-        }
-        logger.info('Identifying visitor:', email);
-        const result = await this.transport.sendIdentify({
-            workspaceId: this.workspaceId,
-            visitorId: this.visitorId,
-            email,
-            properties: traits,
-        });
-        if (result.success) {
-            logger.info('Visitor identified successfully');
-            this.pendingIdentify = null;
-        }
-        else {
-            logger.error('Failed to identify visitor:', result.error);
-            // Store for retry on next flush
-            this.pendingIdentify = { email, traits };
-        }
-    }
-    /**
-     * Retry pending identify call
-     */
-    async retryPendingIdentify() {
-        if (!this.pendingIdentify)
-            return;
-        const { email, traits } = this.pendingIdentify;
-        this.pendingIdentify = null;
-        await this.identify(email, traits);
-    }
-    /**
-     * Update consent state
-     */
-    consent(state) {
-        this.consentManager.update(state);
-    }
-    /**
-     * Get current consent state
-     */
-    getConsentState() {
-        return this.consentManager.getState();
-    }
-    /**
-     * Toggle debug mode
-     */
-    debug(enabled) {
-        logger.enabled = enabled;
-        logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
-    }
-    /**
-     * Get visitor ID
-     */
-    getVisitorId() {
-        return this.visitorId;
-    }
-    /**
-     * Get session ID
-     */
-    getSessionId() {
-        return this.sessionId;
-    }
-    /**
-     * Get workspace ID
-     */
-    getWorkspaceId() {
-        return this.workspaceId;
-    }
-    /**
-     * Get current configuration
-     */
-    getConfig() {
-        return { ...this.config };
-    }
-    /**
-     * Force flush event queue
-     */
-    async flush() {
-        await this.retryPendingIdentify();
-        await this.queue.flush();
-    }
-    /**
-     * Reset visitor and session (for logout)
-     */
-    reset() {
-        logger.info('Resetting visitor data');
-        resetIds(this.config.useCookies);
-        this.visitorId = this.createVisitorId();
-        this.sessionId = this.createSessionId();
-        this.queue.clear();
-    }
-    /**
-     * Delete all stored user data (GDPR right-to-erasure)
-     */
-    deleteData() {
-        logger.info('Deleting all user data (GDPR request)');
-        // Clear queue
-        this.queue.clear();
-        // Reset consent
-        this.consentManager.reset();
-        // Clear all stored IDs
-        resetIds(this.config.useCookies);
-        // Clear session storage items
-        if (typeof sessionStorage !== 'undefined') {
-            try {
-                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
-                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID + '_anon');
-                sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
-                sessionStorage.removeItem(STORAGE_KEYS.SESSION_TIMESTAMP);
-            }
-            catch {
-                // Ignore errors
-            }
-        }
-        // Clear localStorage items
-        if (typeof localStorage !== 'undefined') {
-            try {
-                localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
-                localStorage.removeItem(STORAGE_KEYS.CONSENT);
-                localStorage.removeItem(STORAGE_KEYS.EVENT_QUEUE);
-            }
-            catch {
-                // Ignore errors
-            }
-        }
-        // Generate new IDs
-        this.visitorId = this.createVisitorId();
-        this.sessionId = this.createSessionId();
-        logger.info('All user data deleted');
-    }
-    /**
-     * Destroy tracker and cleanup
-     */
-    async destroy() {
-        logger.info('Destroying tracker');
-        // Flush any remaining events (await to ensure completion)
-        await this.queue.flush();
-        // Destroy plugins
-        for (const plugin of this.plugins) {
-            if (plugin.destroy) {
-                plugin.destroy();
-            }
-        }
-        this.plugins = [];
-        // Destroy queue
-        this.queue.destroy();
-        this.isInitialized = false;
-    }
-}
-
-/**
  * Clianta SDK - Event Triggers Manager
  * Manages event-driven automation and email notifications
  */
@@ -3129,18 +2833,28 @@ class EventTriggersManager {
  * CRM API Client for managing contacts and opportunities
  */
 class CRMClient {
-    constructor(apiEndpoint, workspaceId, authToken) {
+    constructor(apiEndpoint, workspaceId, authToken, apiKey) {
         this.apiEndpoint = apiEndpoint;
         this.workspaceId = workspaceId;
         this.authToken = authToken;
+        this.apiKey = apiKey;
         this.triggers = new EventTriggersManager(apiEndpoint, workspaceId, authToken);
     }
     /**
-     * Set authentication token for API requests
+     * Set authentication token for API requests (user JWT)
      */
     setAuthToken(token) {
         this.authToken = token;
+        this.apiKey = undefined;
         this.triggers.setAuthToken(token);
+    }
+    /**
+     * Set workspace API key for server-to-server requests.
+     * Use this instead of setAuthToken when integrating from an external app.
+     */
+    setApiKey(key) {
+        this.apiKey = key;
+        this.authToken = undefined;
     }
     /**
      * Validate required parameter exists
@@ -3160,7 +2874,10 @@ class CRMClient {
             'Content-Type': 'application/json',
             ...(options.headers || {}),
         };
-        if (this.authToken) {
+        if (this.apiKey) {
+            headers['X-Api-Key'] = this.apiKey;
+        }
+        else if (this.authToken) {
             headers['Authorization'] = `Bearer ${this.authToken}`;
         }
         try {
@@ -3187,6 +2904,65 @@ class CRMClient {
                 success: false,
                 error: error instanceof Error ? error.message : 'Network error',
                 status: 0,
+            };
+        }
+    }
+    // ============================================
+    // INBOUND EVENTS API (API-key authenticated)
+    // ============================================
+    /**
+     * Send an inbound event from an external app (e.g. user signup on client website).
+     * Requires the client to be initialized with an API key via setApiKey() or the constructor.
+     *
+     * The contact is upserted in the CRM and matching workflow automations fire automatically.
+     *
+     * @example
+     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * crm.setApiKey('mm_live_...');
+     *
+     * await crm.sendEvent({
+     *   event: 'user.registered',
+     *   contact: { email: 'alice@example.com', firstName: 'Alice' },
+     *   data: { plan: 'free', signupSource: 'homepage' },
+     * });
+     */
+    async sendEvent(payload) {
+        const url = `${this.apiEndpoint}/api/public/events`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.apiKey) {
+            headers['X-Api-Key'] = this.apiKey;
+        }
+        else if (this.authToken) {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                return {
+                    success: false,
+                    contactCreated: false,
+                    event: payload.event,
+                    error: data.error || 'Request failed',
+                };
+            }
+            return {
+                success: data.success,
+                contactCreated: data.contactCreated,
+                contactId: data.contactId,
+                event: data.event,
+            };
+        }
+        catch (error) {
+            return {
+                success: false,
+                contactCreated: false,
+                event: payload.event,
+                error: error instanceof Error ? error.message : 'Network error',
             };
         }
     }
@@ -3687,6 +3463,358 @@ class CRMClient {
      */
     async deleteEventTrigger(triggerId) {
         return this.triggers.deleteTrigger(triggerId);
+    }
+}
+
+/**
+ * Clianta SDK - Main Tracker Class
+ * @see SDK_VERSION in core/config.ts
+ */
+/**
+ * Main Clianta Tracker Class
+ */
+class Tracker {
+    constructor(workspaceId, userConfig = {}) {
+        this.plugins = [];
+        this.isInitialized = false;
+        /** contactId after a successful identify() call */
+        this.contactId = null;
+        /** Pending identify retry on next flush */
+        this.pendingIdentify = null;
+        if (!workspaceId) {
+            throw new Error('[Clianta] Workspace ID is required');
+        }
+        this.workspaceId = workspaceId;
+        this.config = mergeConfig(userConfig);
+        // Setup debug mode
+        logger.enabled = this.config.debug;
+        logger.info(`Initializing SDK v${SDK_VERSION}`, { workspaceId });
+        // Initialize consent manager
+        this.consentManager = new ConsentManager({
+            ...this.config.consent,
+            onConsentChange: (state, previous) => {
+                this.onConsentChange(state, previous);
+            },
+        });
+        // Initialize transport and queue
+        this.transport = new Transport({ apiEndpoint: this.config.apiEndpoint });
+        this.queue = new EventQueue(this.transport, {
+            batchSize: this.config.batchSize,
+            flushInterval: this.config.flushInterval,
+        });
+        // Get or create visitor and session IDs based on mode
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
+        logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
+        // Initialize plugins
+        this.initPlugins();
+        this.isInitialized = true;
+        logger.info('SDK initialized successfully');
+    }
+    /**
+     * Create visitor ID based on storage mode
+     */
+    createVisitorId() {
+        // Anonymous mode: use temporary ID until consent
+        if (this.config.consent.anonymousMode && !this.consentManager.hasExplicit()) {
+            const key = STORAGE_KEYS.VISITOR_ID + '_anon';
+            let anonId = getSessionStorage(key);
+            if (!anonId) {
+                anonId = 'anon_' + generateUUID();
+                setSessionStorage(key, anonId);
+            }
+            return anonId;
+        }
+        // Cookie-less mode: use sessionStorage only
+        if (this.config.cookielessMode) {
+            let visitorId = getSessionStorage(STORAGE_KEYS.VISITOR_ID);
+            if (!visitorId) {
+                visitorId = generateUUID();
+                setSessionStorage(STORAGE_KEYS.VISITOR_ID, visitorId);
+            }
+            return visitorId;
+        }
+        // Normal mode
+        return getOrCreateVisitorId(this.config.useCookies);
+    }
+    /**
+     * Create session ID
+     */
+    createSessionId() {
+        return getOrCreateSessionId(this.config.sessionTimeout);
+    }
+    /**
+     * Handle consent state changes
+     */
+    onConsentChange(state, previous) {
+        logger.debug('Consent changed:', { from: previous, to: state });
+        // If analytics consent was just granted
+        if (state.analytics && !previous.analytics) {
+            // Upgrade from anonymous ID to persistent ID
+            if (this.config.consent.anonymousMode) {
+                this.visitorId = getOrCreateVisitorId(this.config.useCookies);
+                logger.info('Upgraded from anonymous to persistent visitor ID');
+            }
+            // Flush buffered events
+            const buffered = this.consentManager.flushBuffer();
+            for (const event of buffered) {
+                // Update event with new visitor ID
+                event.visitorId = this.visitorId;
+                this.queue.push(event);
+            }
+        }
+    }
+    /**
+     * Initialize enabled plugins
+     * Handles both sync and async plugin init methods
+     */
+    initPlugins() {
+        const pluginsToLoad = this.config.plugins;
+        // Skip pageView plugin if autoPageView is disabled
+        const filteredPlugins = this.config.autoPageView
+            ? pluginsToLoad
+            : pluginsToLoad.filter((p) => p !== 'pageView');
+        for (const pluginName of filteredPlugins) {
+            try {
+                const plugin = getPlugin(pluginName);
+                // Handle both sync and async init (fire-and-forget for async)
+                const result = plugin.init(this);
+                if (result instanceof Promise) {
+                    result.catch((error) => {
+                        logger.error(`Async plugin init failed: ${pluginName}`, error);
+                    });
+                }
+                this.plugins.push(plugin);
+                logger.debug(`Plugin loaded: ${pluginName}`);
+            }
+            catch (error) {
+                logger.error(`Failed to load plugin: ${pluginName}`, error);
+            }
+        }
+    }
+    /**
+     * Track a custom event
+     */
+    track(eventType, eventName, properties = {}) {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized, event dropped');
+            return;
+        }
+        const event = {
+            workspaceId: this.workspaceId,
+            visitorId: this.visitorId,
+            sessionId: this.sessionId,
+            eventType: eventType,
+            eventName,
+            url: typeof window !== 'undefined' ? window.location.href : '',
+            referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
+            properties: {
+                ...properties,
+                eventId: generateUUID(), // Unique ID for deduplication on retry
+            },
+            device: getDeviceInfo(),
+            ...getUTMParams(),
+            timestamp: new Date().toISOString(),
+            sdkVersion: SDK_VERSION,
+        };
+        // Attach contactId if known (from a prior identify() call)
+        if (this.contactId) {
+            event.contactId = this.contactId;
+        }
+        // Check consent before tracking
+        if (!this.consentManager.canTrack()) {
+            // Buffer event for later if waitForConsent is enabled
+            if (this.config.consent.waitForConsent) {
+                this.consentManager.bufferEvent(event);
+                return;
+            }
+            // Otherwise drop the event
+            logger.debug('Event dropped (no consent):', eventName);
+            return;
+        }
+        this.queue.push(event);
+        logger.debug('Event tracked:', eventName, properties);
+    }
+    /**
+     * Track a page view
+     */
+    page(name, properties = {}) {
+        const pageName = name || (typeof document !== 'undefined' ? document.title : 'Page View');
+        this.track('page_view', pageName, {
+            ...properties,
+            path: typeof window !== 'undefined' ? window.location.pathname : '',
+        });
+    }
+    /**
+     * Identify a visitor.
+     * Links the anonymous visitorId to a CRM contact and returns the contactId.
+     * All subsequent track() calls will include the contactId automatically.
+     */
+    async identify(email, traits = {}) {
+        if (!email) {
+            logger.warn('Email is required for identification');
+            return null;
+        }
+        logger.info('Identifying visitor:', email);
+        const result = await this.transport.sendIdentify({
+            workspaceId: this.workspaceId,
+            visitorId: this.visitorId,
+            email,
+            properties: traits,
+        });
+        if (result.success) {
+            logger.info('Visitor identified successfully, contactId:', result.contactId);
+            // Store contactId so all future track() calls include it
+            this.contactId = result.contactId ?? null;
+            this.pendingIdentify = null;
+            return this.contactId;
+        }
+        else {
+            logger.error('Failed to identify visitor:', result.error);
+            // Store for retry on next flush
+            this.pendingIdentify = { email, traits };
+            return null;
+        }
+    }
+    /**
+     * Send a server-side inbound event via the API key endpoint.
+     * Convenience proxy to CRMClient.sendEvent() — requires apiKey in config.
+     */
+    async sendEvent(payload) {
+        const apiKey = this.config.apiKey;
+        if (!apiKey) {
+            logger.error('sendEvent() requires an apiKey in the SDK config');
+            return { success: false, contactCreated: false, event: payload.event, error: 'No API key configured' };
+        }
+        const client = new CRMClient(this.config.apiEndpoint, this.workspaceId, undefined, apiKey);
+        return client.sendEvent(payload);
+    }
+    /**
+     * Retry pending identify call
+     */
+    async retryPendingIdentify() {
+        if (!this.pendingIdentify)
+            return;
+        const { email, traits } = this.pendingIdentify;
+        this.pendingIdentify = null;
+        await this.identify(email, traits);
+    }
+    /**
+     * Update consent state
+     */
+    consent(state) {
+        this.consentManager.update(state);
+    }
+    /**
+     * Get current consent state
+     */
+    getConsentState() {
+        return this.consentManager.getState();
+    }
+    /**
+     * Toggle debug mode
+     */
+    debug(enabled) {
+        logger.enabled = enabled;
+        logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+    /**
+     * Get visitor ID
+     */
+    getVisitorId() {
+        return this.visitorId;
+    }
+    /**
+     * Get session ID
+     */
+    getSessionId() {
+        return this.sessionId;
+    }
+    /**
+     * Get workspace ID
+     */
+    getWorkspaceId() {
+        return this.workspaceId;
+    }
+    /**
+     * Get current configuration
+     */
+    getConfig() {
+        return { ...this.config };
+    }
+    /**
+     * Force flush event queue
+     */
+    async flush() {
+        await this.retryPendingIdentify();
+        await this.queue.flush();
+    }
+    /**
+     * Reset visitor and session (for logout)
+     */
+    reset() {
+        logger.info('Resetting visitor data');
+        resetIds(this.config.useCookies);
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
+        this.queue.clear();
+    }
+    /**
+     * Delete all stored user data (GDPR right-to-erasure)
+     */
+    deleteData() {
+        logger.info('Deleting all user data (GDPR request)');
+        // Clear queue
+        this.queue.clear();
+        // Reset consent
+        this.consentManager.reset();
+        // Clear all stored IDs
+        resetIds(this.config.useCookies);
+        // Clear session storage items
+        if (typeof sessionStorage !== 'undefined') {
+            try {
+                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                sessionStorage.removeItem(STORAGE_KEYS.VISITOR_ID + '_anon');
+                sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+                sessionStorage.removeItem(STORAGE_KEYS.SESSION_TIMESTAMP);
+            }
+            catch {
+                // Ignore errors
+            }
+        }
+        // Clear localStorage items
+        if (typeof localStorage !== 'undefined') {
+            try {
+                localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+                localStorage.removeItem(STORAGE_KEYS.CONSENT);
+                localStorage.removeItem(STORAGE_KEYS.EVENT_QUEUE);
+            }
+            catch {
+                // Ignore errors
+            }
+        }
+        // Generate new IDs
+        this.visitorId = this.createVisitorId();
+        this.sessionId = this.createSessionId();
+        logger.info('All user data deleted');
+    }
+    /**
+     * Destroy tracker and cleanup
+     */
+    async destroy() {
+        logger.info('Destroying tracker');
+        // Flush any remaining events (await to ensure completion)
+        await this.queue.flush();
+        // Destroy plugins
+        for (const plugin of this.plugins) {
+            if (plugin.destroy) {
+                plugin.destroy();
+            }
+        }
+        this.plugins = [];
+        // Destroy queue
+        this.queue.destroy();
+        this.isInitialized = false;
     }
 }
 

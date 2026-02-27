@@ -5,6 +5,22 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-27
+
+### Fixed
+- **CRITICAL: contactId propagation** - `identify()` now stores the returned `contactId` and attaches it to every subsequent `track()` call. Previously, all events remained anonymous after identification.
+- **CRITICAL: identify() return type** - `identify()` now returns `Promise<string | null>` (the contactId) instead of `Promise<void>`, so callers can use the contactId immediately.
+- **Transport: contactId extraction** - `sendIdentify()` now parses the server response body and returns `contactId` in `TransportResult`.
+- **Event deduplication** - Every tracked event now includes a unique `eventId` UUID in properties. Prevents duplicate events when events are retried after network timeouts or restored from localStorage on page reload.
+
+### Added
+- **`sendEvent()` method on Tracker** - Convenience proxy to `CRMClient.sendEvent()` for server-side inbound events. Requires `apiKey` in the SDK config. No need to instantiate a separate `CRMClient`.
+- **`contactId` field on TransportResult** - TypeScript type updated.
+- **`sendEvent()` on TrackerCore interface** - Full TypeScript support.
+
+### Changed
+- `TrackerCore.identify()` signature: `Promise<void>` → `Promise<string | null>`
+
 ## [1.3.0] - 2026-02-17
 
 ### Added

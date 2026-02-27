@@ -6,7 +6,7 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.3.0';
+export const SDK_VERSION = '1.4.0';
 
 /** Default API endpoint based on environment */
 export const getDefaultApiEndpoint = (): string => {
@@ -49,6 +49,7 @@ export const DEFAULT_CONFIG: Required<CliantaConfig> = {
     projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
     authToken: '',
+    apiKey: '',
     debug: false,
     autoPageView: true,
     plugins: DEFAULT_PLUGINS,
