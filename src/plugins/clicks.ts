@@ -43,6 +43,10 @@ export class ClicksPlugin extends BasePlugin {
             elementId: elementInfo.id,
             elementClass: elementInfo.className,
             href: (target as HTMLAnchorElement).href || undefined,
+            x: Math.round((e.clientX / window.innerWidth) * 100),
+            y: Math.round((e.clientY / window.innerHeight) * 100),
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
         });
     }
 }
