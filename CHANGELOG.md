@@ -5,6 +5,36 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-28
+
+### Security
+- **Cookie `Secure` flag** — Cookies now include `; Secure` on HTTPS connections, preventing visitor IDs from leaking over plaintext
+- **Open redirect prevention** — `redirectUrl` in popup forms is validated before navigation; blocks `javascript:`, `data:`, and other dangerous protocols
+- **API key browser warning** — Console warning when `apiKey` is used in client-side code (should be server-side only)
+- **HTTPS endpoint warning** — Console warning when `apiEndpoint` uses HTTP in production
+- **Email validation** — `identify()` validates email format before sending to server
+- **Queue moved to sessionStorage** — Event queue no longer persists in localStorage by default (configurable via `persistMode`)
+- **innerHTML → textContent** — Popup form submit button uses safe DOM API
+
+### Fixed
+- **CRITICAL: Double `history.pushState` patching** — ScrollPlugin and PageViewPlugin were both monkey-patching the History API independently, causing double page view events on SPA navigation. ScrollPlugin now listens for a `clianta:navigation` custom event instead
+- **CRITICAL: React `useEffect` re-initialization** — `CliantaProvider` was destroying and recreating the tracker on every render when config was defined inline (object ref changed). Now depends on `config.projectId` (stable string)
+- **React context null on first render** — Switched from `useRef` to `useState` for tracker instance so context re-renders when ready
+- **PopupForms cleanup** — Delay timers and click trigger listeners are now properly tracked and cleaned up on `destroy()`
+- **`reset()` cleanup** — Now clears `contactId` and `pendingIdentify` alongside visitor/session IDs
+
+### Added
+- **Visitor APIs** — `getVisitorProfile()`, `getVisitorActivity()`, `getVisitorTimeline()`, `getVisitorEngagement()` for fetching visitor data from the CRM
+- **Event schema validation** — `registerEventSchema()` validates event properties in debug mode
+- **`persistMode` config** — Choose `'session'` (default), `'local'` (cross-session), or `'none'` for queue persistence
+- **`websiteDomain` property** — Automatically included on all tracked events
+- **Angular integration** — `@clianta/sdk/angular` module
+- **Svelte integration** — `@clianta/sdk/svelte` module
+
+### Changed
+- `CliantaProvider` uses `useState` instead of `useRef` for tracker instance
+- Queue persistence defaults to `sessionStorage` (was `localStorage`)
+
 ## [1.4.0] - 2026-02-27
 
 ### Fixed

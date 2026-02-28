@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.4.0
+ * Clianta SDK v1.5.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
