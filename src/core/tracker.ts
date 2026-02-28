@@ -28,6 +28,7 @@ import {
     generateUUID,
     getSessionStorage,
     setSessionStorage,
+    isValidEmail,
 } from '../utils';
 
 /**
@@ -47,6 +48,8 @@ export class Tracker implements TrackerCore {
     private contactId: string | null = null;
     /** Pending identify retry on next flush */
     private pendingIdentify: { email: string; traits: UserTraits } | null = null;
+    /** Registered event schemas for validation */
+    private eventSchemas: Map<string, Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>> = new Map();
 
     constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
         if (!workspaceId) {
@@ -80,6 +83,18 @@ export class Tracker implements TrackerCore {
         this.sessionId = this.createSessionId();
 
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
+
+        // Security warnings
+        if (this.config.apiEndpoint.startsWith('http://') &&
+            typeof window !== 'undefined' &&
+            !window.location.hostname.includes('localhost') &&
+            !window.location.hostname.includes('127.0.0.1')) {
+            logger.warn('apiEndpoint uses HTTP — events and visitor data will be sent unencrypted. Use HTTPS in production.');
+        }
+
+        if (this.config.apiKey && typeof window !== 'undefined') {
+            logger.warn('API key is exposed in client-side code. Use API keys only in server-side (Node.js) environments.');
+        }
 
         // Initialize plugins
         this.initPlugins();
@@ -202,6 +217,7 @@ export class Tracker implements TrackerCore {
             properties: {
                 ...properties,
                 eventId: generateUUID(), // Unique ID for deduplication on retry
+                websiteDomain: typeof window !== 'undefined' ? window.location.hostname : undefined,
             },
             device: getDeviceInfo(),
             ...getUTMParams(),
@@ -213,6 +229,9 @@ export class Tracker implements TrackerCore {
         if (this.contactId) {
             (event as any).contactId = this.contactId;
         }
+
+        // Validate event against registered schema (debug mode only)
+        this.validateEventSchema(eventType as string, properties);
 
         // Check consent before tracking
         if (!this.consentManager.canTrack()) {
@@ -249,6 +268,11 @@ export class Tracker implements TrackerCore {
     async identify(email: string, traits: UserTraits = {}): Promise<string | null> {
         if (!email) {
             logger.warn('Email is required for identification');
+            return null;
+        }
+
+        if (!isValidEmail(email)) {
+            logger.warn('Invalid email format, identification skipped:', email);
             return null;
         }
 
@@ -290,6 +314,106 @@ export class Tracker implements TrackerCore {
     }
 
     /**
+     * Get the current visitor's profile from the CRM.
+     * Returns visitor data and linked contact info if identified.
+     * Only returns data for the current visitor (privacy-safe for frontend).
+     */
+    async getVisitorProfile(): Promise<import('../types').VisitorProfile | null> {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+
+        const result = await this.transport.fetchData<import('../types').VisitorProfile>(
+            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/profile`
+        );
+
+        if (result.success && result.data) {
+            logger.debug('Visitor profile fetched:', result.data);
+            return result.data;
+        }
+
+        logger.warn('Failed to fetch visitor profile:', result.error);
+        return null;
+    }
+
+    /**
+     * Get the current visitor's recent activity/events.
+     * Returns paginated list of tracking events for this visitor.
+     */
+    async getVisitorActivity(
+        options?: import('../types').VisitorActivityOptions
+    ): Promise<{ data: import('../types').VisitorActivity[]; pagination: { page: number; limit: number; total: number; pages: number } } | null> {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+
+        const params: Record<string, string> = {};
+        if (options?.page) params.page = options.page.toString();
+        if (options?.limit) params.limit = options.limit.toString();
+        if (options?.eventType) params.eventType = options.eventType;
+        if (options?.startDate) params.startDate = options.startDate;
+        if (options?.endDate) params.endDate = options.endDate;
+
+        const result = await this.transport.fetchData<any>(
+            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/activity`,
+            params
+        );
+
+        if (result.success && result.data) {
+            return result.data;
+        }
+
+        logger.warn('Failed to fetch visitor activity:', result.error);
+        return null;
+    }
+
+    /**
+     * Get a summarized journey timeline for the current visitor.
+     * Includes top pages, sessions, time spent, and recent activities.
+     */
+    async getVisitorTimeline(): Promise<import('../types').VisitorTimeline | null> {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+
+        const result = await this.transport.fetchData<import('../types').VisitorTimeline>(
+            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/timeline`
+        );
+
+        if (result.success && result.data) {
+            return result.data;
+        }
+
+        logger.warn('Failed to fetch visitor timeline:', result.error);
+        return null;
+    }
+
+    /**
+     * Get engagement metrics for the current visitor.
+     * Includes time on site, page views, bounce rate, and engagement score.
+     */
+    async getVisitorEngagement(): Promise<import('../types').EngagementMetrics | null> {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+
+        const result = await this.transport.fetchData<import('../types').EngagementMetrics>(
+            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/engagement`
+        );
+
+        if (result.success && result.data) {
+            return result.data;
+        }
+
+        logger.warn('Failed to fetch visitor engagement:', result.error);
+        return null;
+    }
+
+    /**
      * Retry pending identify call
      */
     private async retryPendingIdentify(): Promise<void> {
@@ -319,6 +443,56 @@ export class Tracker implements TrackerCore {
     debug(enabled: boolean): void {
         logger.enabled = enabled;
         logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Register a schema for event validation.
+     * When debug mode is enabled, events will be validated against registered schemas.
+     * 
+     * @example
+     * tracker.registerEventSchema('purchase', {
+     *   productId: 'string',
+     *   price: 'number',
+     *   quantity: 'number',
+     * });
+     */
+    registerEventSchema(
+        eventType: string,
+        schema: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>
+    ): void {
+        this.eventSchemas.set(eventType, schema);
+        logger.debug('Event schema registered:', eventType);
+    }
+
+    /**
+     * Validate event properties against a registered schema (debug mode only)
+     */
+    private validateEventSchema(eventType: string, properties: Record<string, unknown>): void {
+        if (!this.config.debug) return;
+        
+        const schema = this.eventSchemas.get(eventType);
+        if (!schema) return;
+
+        for (const [key, expectedType] of Object.entries(schema)) {
+            const value = properties[key];
+            if (value === undefined) {
+                logger.warn(`[Schema] Missing property "${key}" for event type "${eventType}"`);
+                continue;
+            }
+
+            let valid = false;
+            switch (expectedType) {
+                case 'string': valid = typeof value === 'string'; break;
+                case 'number': valid = typeof value === 'number'; break;
+                case 'boolean': valid = typeof value === 'boolean'; break;
+                case 'object': valid = typeof value === 'object' && !Array.isArray(value); break;
+                case 'array': valid = Array.isArray(value); break;
+            }
+
+            if (!valid) {
+                logger.warn(`[Schema] Property "${key}" for event "${eventType}" expected ${expectedType}, got ${typeof value}`);
+            }
+        }
     }
 
     /**
@@ -365,6 +539,8 @@ export class Tracker implements TrackerCore {
         resetIds(this.config.useCookies);
         this.visitorId = this.createVisitorId();
         this.sessionId = this.createSessionId();
+        this.contactId = null;
+        this.pendingIdentify = null;
         this.queue.clear();
     }
 

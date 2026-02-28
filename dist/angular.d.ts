@@ -1,5 +1,3 @@
-import { Plugin, Ref } from 'vue';
-
 /**
  * Clianta SDK - CRM API Client
  * @see SDK_VERSION in core/config.ts
@@ -212,112 +210,89 @@ interface VisitorActivityOptions {
 }
 
 /**
- * Clianta SDK - Vue 3 Integration
+ * Clianta SDK - Angular Integration
  *
- * Provides plugin and composables for easy Vue 3 integration.
+ * Provides helpers for Angular 16+ integration.
+ * Since Angular uses decorators and DI that require @angular/core as a dependency,
+ * this module provides a factory pattern that Angular users wrap in their own service.
+ *
+ * @example
+ * // In your Angular service:
+ * import { Injectable, OnDestroy } from '@angular/core';
+ * import { createCliantaTracker, type CliantaTrackerInstance } from '@clianta/sdk/angular';
+ *
+ * @Injectable({ providedIn: 'root' })
+ * export class CliantaService implements OnDestroy {
+ *   private instance: CliantaTrackerInstance;
+ *
+ *   constructor() {
+ *     this.instance = createCliantaTracker({
+ *       projectId: environment.cliantaProjectId,
+ *       apiEndpoint: environment.cliantaApiEndpoint,
+ *       debug: !environment.production,
+ *     });
+ *   }
+ *
+ *   get tracker() { return this.instance.tracker; }
+ *
+ *   track(eventType: string, eventName: string, properties?: Record<string, unknown>) {
+ *     this.instance.tracker?.track(eventType, eventName, properties);
+ *   }
+ *
+ *   identify(email: string, traits?: Record<string, unknown>) {
+ *     return this.instance.tracker?.identify(email, traits);
+ *   }
+ *
+ *   ngOnDestroy() {
+ *     this.instance.destroy();
+ *   }
+ * }
  */
 
-interface CliantaPluginOptions extends CliantaConfig {
-    /** Project ID (required) */
+interface CliantaTrackerInstance {
+    /** The tracker instance (null if projectId was missing) */
+    tracker: TrackerCore | null;
+    /** Flush pending events and clean up */
+    destroy: () => void;
+}
+interface CliantaAngularConfig extends CliantaConfig {
+    /** Project/workspace ID (required) */
     projectId: string;
 }
 /**
- * Vue plugin for Clianta SDK
+ * Create a Clianta tracker instance for use in Angular services.
+ *
+ * @param config - Configuration including projectId
+ * @returns Object with tracker instance and destroy method
  *
  * @example
- * // In main.ts:
- * import { createApp } from 'vue';
- * import { CliantaPlugin } from '@clianta/sdk/vue';
- * import App from './App.vue';
- *
- * const app = createApp(App);
- * app.use(CliantaPlugin, {
+ * const instance = createCliantaTracker({
  *   projectId: 'your-project-id',
  *   apiEndpoint: 'https://api.clianta.online',
- *   debug: import.meta.env.DEV,
  * });
- * app.mount('#app');
+ *
+ * instance.tracker?.track('page_view', 'Home Page');
+ * // On cleanup:
+ * instance.destroy();
  */
-declare const CliantaPlugin: Plugin<CliantaPluginOptions>;
+declare function createCliantaTracker(config: CliantaAngularConfig): CliantaTrackerInstance;
 /**
- * useClianta - Composable to access tracker
+ * Create a track function bound to a tracker instance.
+ * Useful as a shorthand in Angular components.
  *
  * @example
- * <script setup>
- * import { useClianta } from '@clianta/sdk/vue';
- *
- * const tracker = useClianta();
- * tracker.value?.track('button_click', 'CTA Button');
- * </script>
+ * const track = createTrackFn(instance.tracker);
+ * track('button_click', 'CTA Button', { location: 'header' });
  */
-declare function useClianta(): Ref<TrackerCore | null>;
+declare function createTrackFn(tracker: TrackerCore | null): (eventType: string, eventName: string, properties?: Record<string, unknown>) => void;
 /**
- * useCliantaTrack - Composable for tracking events
+ * Create an identify function bound to a tracker instance.
  *
  * @example
- * <script setup>
- * import { useCliantaTrack } from '@clianta/sdk/vue';
- *
- * const track = useCliantaTrack();
- * track('purchase', 'Order Completed', { orderId: '123' });
- * </script>
+ * const identify = createIdentifyFn(instance.tracker);
+ * identify('user@example.com', { firstName: 'John' });
  */
-declare function useCliantaTrack(): (eventType: string, eventName: string, properties?: Record<string, unknown>) => void;
-/**
- * useCliantaIdentify - Composable for identifying users
- *
- * @example
- * <script setup>
- * import { useCliantaIdentify } from '@clianta/sdk/vue';
- *
- * const identify = useCliantaIdentify();
- * identify('user@example.com', { name: 'John' });
- * </script>
- */
-declare function useCliantaIdentify(): (email: string, traits?: Record<string, unknown>) => any;
-/**
- * useCliantaPageView - Composable for manual page view tracking
- *
- * @example
- * <script setup>
- * import { useCliantaPageView } from '@clianta/sdk/vue';
- * import { watch } from 'vue';
- * import { useRoute } from 'vue-router';
- *
- * const route = useRoute();
- * const trackPageView = useCliantaPageView();
- *
- * watch(() => route.path, () => {
- *   trackPageView(route.name?.toString());
- * });
- * </script>
- */
-declare function useCliantaPageView(): (name?: string, properties?: Record<string, unknown>) => void;
-/**
- * useCliantaConsent - Composable for managing consent
- *
- * @example
- * <script setup>
- * import { useCliantaConsent } from '@clianta/sdk/vue';
- *
- * const { consent, getConsentState } = useCliantaConsent();
- * consent({ analytics: true, marketing: false });
- * </script>
- */
-declare function useCliantaConsent(): {
-    consent: (state: {
-        analytics?: boolean;
-        marketing?: boolean;
-        personalization?: boolean;
-    }) => void;
-    getConsentState: () => any;
-};
+declare function createIdentifyFn(tracker: TrackerCore | null): (email: string, traits?: Record<string, unknown>) => Promise<string | null> | undefined;
 
-declare module 'vue' {
-    interface ComponentCustomProperties {
-        $clianta: TrackerCore;
-    }
-}
-
-export { CliantaPlugin, useClianta, useCliantaConsent, useCliantaIdentify, useCliantaPageView, useCliantaTrack };
-export type { CliantaConfig, CliantaPluginOptions, TrackerCore };
+export { createCliantaTracker, createIdentifyFn, createTrackFn };
+export type { CliantaAngularConfig, CliantaConfig, CliantaTrackerInstance, TrackerCore };

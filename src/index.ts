@@ -40,6 +40,12 @@ export type {
     ContactUpdateAction,
     EmailTemplate,
     TriggerExecution,
+    VisitorProfile,
+    VisitorActivity,
+    VisitorTimeline,
+    EngagementMetrics,
+    VisitorActivityOptions,
+    ContactTimelineOptions,
 } from './types';
 
 // Export consent types

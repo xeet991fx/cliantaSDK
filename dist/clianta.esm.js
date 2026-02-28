@@ -50,6 +50,7 @@ const DEFAULT_CONFIG = {
     cookieDomain: '',
     useCookies: false,
     cookielessMode: false,
+    persistMode: 'session',
 };
 /** Storage keys */
 const STORAGE_KEYS = {
@@ -244,6 +245,39 @@ class Transport {
         }
     }
     /**
+     * Fetch data from the tracking API (GET request)
+     * Used for read-back APIs (visitor profile, activity, etc.)
+     */
+    async fetchData(path, params) {
+        const url = new URL(`${this.config.apiEndpoint}${path}`);
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    url.searchParams.set(key, value);
+                }
+            });
+        }
+        try {
+            const response = await this.fetchWithTimeout(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+            if (response.ok) {
+                const body = await response.json();
+                logger.debug('Fetch successful:', path);
+                return { success: true, data: body.data ?? body, status: response.status };
+            }
+            logger.error(`Fetch failed with status ${response.status}`);
+            return { success: false, status: response.status };
+        }
+        catch (error) {
+            logger.error('Fetch request failed:', error);
+            return { success: false, error: error };
+        }
+    }
+    /**
      * Internal send with retry logic
      */
     async send(url, payload, attempt = 1) {
@@ -407,7 +441,9 @@ function cookie(name, value, days) {
         date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
         expires = '; expires=' + date.toUTCString();
     }
-    document.cookie = name + '=' + value + expires + '; path=/; SameSite=Lax';
+    // Add Secure flag on HTTPS to prevent cookie leakage over plaintext
+    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = name + '=' + value + expires + '; path=/; SameSite=Lax' + secure;
     return value;
 }
 // ============================================
@@ -571,6 +607,17 @@ function isMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 // ============================================
+// VALIDATION UTILITIES
+// ============================================
+/**
+ * Validate email format
+ */
+function isValidEmail(email) {
+    if (typeof email !== 'string' || !email)
+        return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+// ============================================
 // DEVICE INFO
 // ============================================
 /**
@@ -624,6 +671,7 @@ class EventQueue {
             maxQueueSize: config.maxQueueSize ?? MAX_QUEUE_SIZE,
             storageKey: config.storageKey ?? STORAGE_KEYS.EVENT_QUEUE,
         };
+        this.persistMode = config.persistMode || 'session';
         // Restore persisted queue
         this.restoreQueue();
         // Start auto-flush timer
@@ -729,6 +777,13 @@ class EventQueue {
     clear() {
         this.queue = [];
         this.persistQueue([]);
+        // Also clear localStorage if used
+        if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+            try {
+                localStorage.removeItem(this.config.storageKey);
+            }
+            catch { /* ignore */ }
+        }
     }
     /**
      * Stop the flush timer and cleanup handlers
@@ -783,22 +838,44 @@ class EventQueue {
         window.addEventListener('pagehide', this.boundPageHide);
     }
     /**
-     * Persist queue to localStorage
+     * Persist queue to storage based on persistMode
      */
     persistQueue(events) {
+        if (this.persistMode === 'none')
+            return;
         try {
-            setLocalStorage(this.config.storageKey, JSON.stringify(events));
+            const serialized = JSON.stringify(events);
+            if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.setItem(this.config.storageKey, serialized);
+                }
+                catch {
+                    // localStorage quota exceeded — fallback to sessionStorage
+                    setSessionStorage(this.config.storageKey, serialized);
+                }
+            }
+            else {
+                setSessionStorage(this.config.storageKey, serialized);
+            }
         }
         catch {
             // Ignore storage errors
         }
     }
     /**
-     * Restore queue from localStorage
+     * Restore queue from storage
      */
     restoreQueue() {
         try {
-            const stored = getLocalStorage(this.config.storageKey);
+            let stored = null;
+            // Check localStorage first (cross-session persistence)
+            if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+                stored = localStorage.getItem(this.config.storageKey);
+            }
+            // Fall back to sessionStorage
+            if (!stored) {
+                stored = getSessionStorage(this.config.storageKey);
+            }
             if (stored) {
                 const events = JSON.parse(stored);
                 if (Array.isArray(events) && events.length > 0) {
@@ -866,10 +943,13 @@ class PageViewPlugin extends BasePlugin {
             history.pushState = function (...args) {
                 self.originalPushState.apply(history, args);
                 self.trackPageView();
+                // Notify other plugins (e.g. ScrollPlugin) about navigation
+                window.dispatchEvent(new Event('clianta:navigation'));
             };
             history.replaceState = function (...args) {
                 self.originalReplaceState.apply(history, args);
                 self.trackPageView();
+                window.dispatchEvent(new Event('clianta:navigation'));
             };
             // Handle back/forward navigation
             this.popstateHandler = () => this.trackPageView();
@@ -923,9 +1003,8 @@ class ScrollPlugin extends BasePlugin {
         this.pageLoadTime = 0;
         this.scrollTimeout = null;
         this.boundHandler = null;
-        /** SPA navigation support */
-        this.originalPushState = null;
-        this.originalReplaceState = null;
+        /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
+        this.navigationHandler = null;
         this.popstateHandler = null;
     }
     init(tracker) {
@@ -934,8 +1013,13 @@ class ScrollPlugin extends BasePlugin {
         if (typeof window !== 'undefined') {
             this.boundHandler = this.handleScroll.bind(this);
             window.addEventListener('scroll', this.boundHandler, { passive: true });
-            // Setup SPA navigation reset
-            this.setupNavigationReset();
+            // Listen for navigation events dispatched by PageViewPlugin
+            // instead of independently monkey-patching history.pushState
+            this.navigationHandler = () => this.resetForNavigation();
+            window.addEventListener('clianta:navigation', this.navigationHandler);
+            // Handle back/forward navigation
+            this.popstateHandler = () => this.resetForNavigation();
+            window.addEventListener('popstate', this.popstateHandler);
         }
     }
     destroy() {
@@ -945,16 +1029,10 @@ class ScrollPlugin extends BasePlugin {
         if (this.scrollTimeout) {
             clearTimeout(this.scrollTimeout);
         }
-        // Restore original history methods
-        if (this.originalPushState) {
-            history.pushState = this.originalPushState;
-            this.originalPushState = null;
+        if (this.navigationHandler && typeof window !== 'undefined') {
+            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            this.navigationHandler = null;
         }
-        if (this.originalReplaceState) {
-            history.replaceState = this.originalReplaceState;
-            this.originalReplaceState = null;
-        }
-        // Remove popstate listener
         if (this.popstateHandler && typeof window !== 'undefined') {
             window.removeEventListener('popstate', this.popstateHandler);
             this.popstateHandler = null;
@@ -968,29 +1046,6 @@ class ScrollPlugin extends BasePlugin {
         this.milestonesReached.clear();
         this.maxScrollDepth = 0;
         this.pageLoadTime = Date.now();
-    }
-    /**
-     * Setup History API interception for SPA navigation
-     */
-    setupNavigationReset() {
-        if (typeof window === 'undefined')
-            return;
-        // Store originals for cleanup
-        this.originalPushState = history.pushState;
-        this.originalReplaceState = history.replaceState;
-        // Intercept pushState and replaceState
-        const self = this;
-        history.pushState = function (...args) {
-            self.originalPushState.apply(history, args);
-            self.resetForNavigation();
-        };
-        history.replaceState = function (...args) {
-            self.originalReplaceState.apply(history, args);
-            self.resetForNavigation();
-        };
-        // Handle back/forward navigation
-        this.popstateHandler = () => this.resetForNavigation();
-        window.addEventListener('popstate', this.popstateHandler);
     }
     handleScroll() {
         // Debounce scroll tracking
@@ -1191,6 +1246,10 @@ class ClicksPlugin extends BasePlugin {
             elementId: elementInfo.id,
             elementClass: elementInfo.className,
             href: target.href || undefined,
+            x: Math.round((e.clientX / window.innerWidth) * 100),
+            y: Math.round((e.clientY / window.innerHeight) * 100),
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
         });
     }
 }
@@ -1213,6 +1272,9 @@ class EngagementPlugin extends BasePlugin {
         this.boundMarkEngaged = null;
         this.boundTrackTimeOnPage = null;
         this.boundVisibilityHandler = null;
+        /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
+        this.navigationHandler = null;
+        this.popstateHandler = null;
     }
     init(tracker) {
         super.init(tracker);
@@ -1238,6 +1300,13 @@ class EngagementPlugin extends BasePlugin {
         // Track time on page before unload
         window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
         document.addEventListener('visibilitychange', this.boundVisibilityHandler);
+        // Listen for navigation events dispatched by PageViewPlugin
+        // instead of independently monkey-patching history.pushState
+        this.navigationHandler = () => this.resetForNavigation();
+        window.addEventListener('clianta:navigation', this.navigationHandler);
+        // Handle back/forward navigation
+        this.popstateHandler = () => this.resetForNavigation();
+        window.addEventListener('popstate', this.popstateHandler);
     }
     destroy() {
         if (this.boundMarkEngaged && typeof document !== 'undefined') {
@@ -1251,10 +1320,27 @@ class EngagementPlugin extends BasePlugin {
         if (this.boundVisibilityHandler && typeof document !== 'undefined') {
             document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
         }
+        if (this.navigationHandler && typeof window !== 'undefined') {
+            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            this.navigationHandler = null;
+        }
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
         if (this.engagementTimeout) {
             clearTimeout(this.engagementTimeout);
         }
         super.destroy();
+    }
+    resetForNavigation() {
+        this.pageLoadTime = Date.now();
+        this.engagementStartTime = Date.now();
+        this.isEngaged = false;
+        if (this.engagementTimeout) {
+            clearTimeout(this.engagementTimeout);
+            this.engagementTimeout = null;
+        }
     }
     markEngaged() {
         if (!this.isEngaged) {
@@ -1295,9 +1381,8 @@ class DownloadsPlugin extends BasePlugin {
         this.name = 'downloads';
         this.trackedDownloads = new Set();
         this.boundHandler = null;
-        /** SPA navigation support */
-        this.originalPushState = null;
-        this.originalReplaceState = null;
+        /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
+        this.navigationHandler = null;
         this.popstateHandler = null;
     }
     init(tracker) {
@@ -1305,24 +1390,25 @@ class DownloadsPlugin extends BasePlugin {
         if (typeof document !== 'undefined') {
             this.boundHandler = this.handleClick.bind(this);
             document.addEventListener('click', this.boundHandler, true);
-            // Setup SPA navigation reset
-            this.setupNavigationReset();
+        }
+        if (typeof window !== 'undefined') {
+            // Listen for navigation events dispatched by PageViewPlugin
+            // instead of independently monkey-patching history.pushState
+            this.navigationHandler = () => this.resetForNavigation();
+            window.addEventListener('clianta:navigation', this.navigationHandler);
+            // Handle back/forward navigation
+            this.popstateHandler = () => this.resetForNavigation();
+            window.addEventListener('popstate', this.popstateHandler);
         }
     }
     destroy() {
         if (this.boundHandler && typeof document !== 'undefined') {
             document.removeEventListener('click', this.boundHandler, true);
         }
-        // Restore original history methods
-        if (this.originalPushState) {
-            history.pushState = this.originalPushState;
-            this.originalPushState = null;
+        if (this.navigationHandler && typeof window !== 'undefined') {
+            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            this.navigationHandler = null;
         }
-        if (this.originalReplaceState) {
-            history.replaceState = this.originalReplaceState;
-            this.originalReplaceState = null;
-        }
-        // Remove popstate listener
         if (this.popstateHandler && typeof window !== 'undefined') {
             window.removeEventListener('popstate', this.popstateHandler);
             this.popstateHandler = null;
@@ -1334,29 +1420,6 @@ class DownloadsPlugin extends BasePlugin {
      */
     resetForNavigation() {
         this.trackedDownloads.clear();
-    }
-    /**
-     * Setup History API interception for SPA navigation
-     */
-    setupNavigationReset() {
-        if (typeof window === 'undefined')
-            return;
-        // Store originals for cleanup
-        this.originalPushState = history.pushState;
-        this.originalReplaceState = history.replaceState;
-        // Intercept pushState and replaceState
-        const self = this;
-        history.pushState = function (...args) {
-            self.originalPushState.apply(history, args);
-            self.resetForNavigation();
-        };
-        history.replaceState = function (...args) {
-            self.originalReplaceState.apply(history, args);
-            self.resetForNavigation();
-        };
-        // Handle back/forward navigation
-        this.popstateHandler = () => this.resetForNavigation();
-        window.addEventListener('popstate', this.popstateHandler);
     }
     handleClick(e) {
         const link = e.target.closest('a');
@@ -1393,6 +1456,9 @@ class ExitIntentPlugin extends BasePlugin {
         this.exitIntentShown = false;
         this.pageLoadTime = 0;
         this.boundHandler = null;
+        /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
+        this.navigationHandler = null;
+        this.popstateHandler = null;
     }
     init(tracker) {
         super.init(tracker);
@@ -1404,12 +1470,33 @@ class ExitIntentPlugin extends BasePlugin {
             this.boundHandler = this.handleMouseLeave.bind(this);
             document.addEventListener('mouseleave', this.boundHandler);
         }
+        if (typeof window !== 'undefined') {
+            // Listen for navigation events dispatched by PageViewPlugin
+            // instead of independently monkey-patching history.pushState
+            this.navigationHandler = () => this.resetForNavigation();
+            window.addEventListener('clianta:navigation', this.navigationHandler);
+            // Handle back/forward navigation
+            this.popstateHandler = () => this.resetForNavigation();
+            window.addEventListener('popstate', this.popstateHandler);
+        }
     }
     destroy() {
         if (this.boundHandler && typeof document !== 'undefined') {
             document.removeEventListener('mouseleave', this.boundHandler);
         }
+        if (this.navigationHandler && typeof window !== 'undefined') {
+            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            this.navigationHandler = null;
+        }
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
         super.destroy();
+    }
+    resetForNavigation() {
+        this.exitIntentShown = false;
+        this.pageLoadTime = Date.now();
     }
     handleMouseLeave(e) {
         // Only trigger when mouse leaves from the top of the page
@@ -1638,6 +1725,8 @@ class PopupFormsPlugin extends BasePlugin {
         this.shownForms = new Set();
         this.scrollHandler = null;
         this.exitHandler = null;
+        this.delayTimers = [];
+        this.clickTriggerListeners = [];
     }
     async init(tracker) {
         super.init(tracker);
@@ -1652,6 +1741,14 @@ class PopupFormsPlugin extends BasePlugin {
     }
     destroy() {
         this.removeTriggers();
+        for (const timer of this.delayTimers) {
+            clearTimeout(timer);
+        }
+        this.delayTimers = [];
+        for (const { element, handler } of this.clickTriggerListeners) {
+            element.removeEventListener('click', handler);
+        }
+        this.clickTriggerListeners = [];
         super.destroy();
     }
     loadShownForms() {
@@ -1714,7 +1811,7 @@ class PopupFormsPlugin extends BasePlugin {
         this.forms.forEach(form => {
             switch (form.trigger.type) {
                 case 'delay':
-                    setTimeout(() => this.showForm(form), (form.trigger.value || 5) * 1000);
+                    this.delayTimers.push(setTimeout(() => this.showForm(form), (form.trigger.value || 5) * 1000));
                     break;
                 case 'scroll':
                     this.setupScrollTrigger(form);
@@ -1757,7 +1854,9 @@ class PopupFormsPlugin extends BasePlugin {
             return;
         const elements = document.querySelectorAll(form.trigger.selector);
         elements.forEach(el => {
-            el.addEventListener('click', () => this.showForm(form));
+            const handler = () => this.showForm(form);
+            el.addEventListener('click', handler);
+            this.clickTriggerListeners.push({ element: el, handler });
         });
     }
     removeTriggers() {
@@ -2044,7 +2143,7 @@ class PopupFormsPlugin extends BasePlugin {
         const submitBtn = formElement.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = 'Submitting...';
+            submitBtn.textContent = 'Submitting...';
         }
         try {
             const response = await fetch(`${apiEndpoint}/api/public/lead-forms/${form._id}/submit`, {
@@ -2085,11 +2184,24 @@ class PopupFormsPlugin extends BasePlugin {
                 if (data.email) {
                     this.tracker?.identify(data.email, data);
                 }
-                // Redirect if configured
+                // Redirect if configured (validate URL to prevent open redirect)
                 if (form.redirectUrl) {
-                    setTimeout(() => {
-                        window.location.href = form.redirectUrl;
-                    }, 1500);
+                    try {
+                        const redirect = new URL(form.redirectUrl, window.location.origin);
+                        const isSameOrigin = redirect.origin === window.location.origin;
+                        const isSafeProtocol = redirect.protocol === 'https:' || redirect.protocol === 'http:';
+                        if (isSameOrigin || isSafeProtocol) {
+                            setTimeout(() => {
+                                window.location.href = redirect.href;
+                            }, 1500);
+                        }
+                        else {
+                            console.warn('[Clianta] Blocked unsafe redirect URL:', form.redirectUrl);
+                        }
+                    }
+                    catch {
+                        console.warn('[Clianta] Invalid redirect URL:', form.redirectUrl);
+                    }
                 }
                 // Close after delay
                 setTimeout(() => {
@@ -2104,7 +2216,7 @@ class PopupFormsPlugin extends BasePlugin {
             console.error('[Clianta] Form submit error:', error);
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = form.submitButtonText || 'Subscribe';
+                submitBtn.textContent = form.submitButtonText || 'Subscribe';
             }
         }
     }
@@ -3435,6 +3547,114 @@ class CRMClient {
         });
     }
     // ============================================
+    // READ-BACK / DATA RETRIEVAL API
+    // ============================================
+    /**
+     * Get a contact by email address.
+     * Returns the first matching contact from a search query.
+     */
+    async getContactByEmail(email) {
+        this.validateRequired('email', email, 'getContactByEmail');
+        const queryParams = new URLSearchParams({ search: email, limit: '1' });
+        return this.request(`/api/workspaces/${this.workspaceId}/contacts?${queryParams.toString()}`);
+    }
+    /**
+     * Get activity timeline for a contact
+     */
+    async getContactActivity(contactId, params) {
+        this.validateRequired('contactId', contactId, 'getContactActivity');
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        if (params?.type)
+            queryParams.set('type', params.type);
+        if (params?.startDate)
+            queryParams.set('startDate', params.startDate);
+        if (params?.endDate)
+            queryParams.set('endDate', params.endDate);
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts/${contactId}/activities${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Get engagement metrics for a contact (via their linked visitor data)
+     */
+    async getContactEngagement(contactId) {
+        this.validateRequired('contactId', contactId, 'getContactEngagement');
+        return this.request(`/api/workspaces/${this.workspaceId}/contacts/${contactId}/engagement`);
+    }
+    /**
+     * Get a full timeline for a contact including events, activities, and opportunities
+     */
+    async getContactTimeline(contactId, params) {
+        this.validateRequired('contactId', contactId, 'getContactTimeline');
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts/${contactId}/timeline${query ? `?${query}` : ''}`;
+        return this.request(endpoint);
+    }
+    /**
+     * Search contacts with advanced filters
+     */
+    async searchContacts(query, filters) {
+        const queryParams = new URLSearchParams();
+        queryParams.set('search', query);
+        if (filters?.status)
+            queryParams.set('status', filters.status);
+        if (filters?.lifecycleStage)
+            queryParams.set('lifecycleStage', filters.lifecycleStage);
+        if (filters?.source)
+            queryParams.set('source', filters.source);
+        if (filters?.tags)
+            queryParams.set('tags', filters.tags.join(','));
+        if (filters?.page)
+            queryParams.set('page', filters.page.toString());
+        if (filters?.limit)
+            queryParams.set('limit', filters.limit.toString());
+        const qs = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts${qs ? `?${qs}` : ''}`;
+        return this.request(endpoint);
+    }
+    // ============================================
+    // WEBHOOK MANAGEMENT API
+    // ============================================
+    /**
+     * List all webhook subscriptions
+     */
+    async listWebhooks(params) {
+        const queryParams = new URLSearchParams();
+        if (params?.page)
+            queryParams.set('page', params.page.toString());
+        if (params?.limit)
+            queryParams.set('limit', params.limit.toString());
+        const query = queryParams.toString();
+        return this.request(`/api/workspaces/${this.workspaceId}/webhooks${query ? `?${query}` : ''}`);
+    }
+    /**
+     * Create a new webhook subscription
+     */
+    async createWebhook(data) {
+        return this.request(`/api/workspaces/${this.workspaceId}/webhooks`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+    /**
+     * Delete a webhook subscription
+     */
+    async deleteWebhook(webhookId) {
+        this.validateRequired('webhookId', webhookId, 'deleteWebhook');
+        return this.request(`/api/workspaces/${this.workspaceId}/webhooks/${webhookId}`, {
+            method: 'DELETE',
+        });
+    }
+    // ============================================
     // EVENT TRIGGERS API (delegated to triggers manager)
     // ============================================
     /**
@@ -3478,6 +3698,8 @@ class Tracker {
         this.contactId = null;
         /** Pending identify retry on next flush */
         this.pendingIdentify = null;
+        /** Registered event schemas for validation */
+        this.eventSchemas = new Map();
         if (!workspaceId) {
             throw new Error('[Clianta] Workspace ID is required');
         }
@@ -3503,6 +3725,16 @@ class Tracker {
         this.visitorId = this.createVisitorId();
         this.sessionId = this.createSessionId();
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
+        // Security warnings
+        if (this.config.apiEndpoint.startsWith('http://') &&
+            typeof window !== 'undefined' &&
+            !window.location.hostname.includes('localhost') &&
+            !window.location.hostname.includes('127.0.0.1')) {
+            logger.warn('apiEndpoint uses HTTP — events and visitor data will be sent unencrypted. Use HTTPS in production.');
+        }
+        if (this.config.apiKey && typeof window !== 'undefined') {
+            logger.warn('API key is exposed in client-side code. Use API keys only in server-side (Node.js) environments.');
+        }
         // Initialize plugins
         this.initPlugins();
         this.isInitialized = true;
@@ -3608,6 +3840,7 @@ class Tracker {
             properties: {
                 ...properties,
                 eventId: generateUUID(), // Unique ID for deduplication on retry
+                websiteDomain: typeof window !== 'undefined' ? window.location.hostname : undefined,
             },
             device: getDeviceInfo(),
             ...getUTMParams(),
@@ -3618,6 +3851,8 @@ class Tracker {
         if (this.contactId) {
             event.contactId = this.contactId;
         }
+        // Validate event against registered schema (debug mode only)
+        this.validateEventSchema(eventType, properties);
         // Check consent before tracking
         if (!this.consentManager.canTrack()) {
             // Buffer event for later if waitForConsent is enabled
@@ -3650,6 +3885,10 @@ class Tracker {
     async identify(email, traits = {}) {
         if (!email) {
             logger.warn('Email is required for identification');
+            return null;
+        }
+        if (!isValidEmail(email)) {
+            logger.warn('Invalid email format, identification skipped:', email);
             return null;
         }
         logger.info('Identifying visitor:', email);
@@ -3687,6 +3926,83 @@ class Tracker {
         return client.sendEvent(payload);
     }
     /**
+     * Get the current visitor's profile from the CRM.
+     * Returns visitor data and linked contact info if identified.
+     * Only returns data for the current visitor (privacy-safe for frontend).
+     */
+    async getVisitorProfile() {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/profile`);
+        if (result.success && result.data) {
+            logger.debug('Visitor profile fetched:', result.data);
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor profile:', result.error);
+        return null;
+    }
+    /**
+     * Get the current visitor's recent activity/events.
+     * Returns paginated list of tracking events for this visitor.
+     */
+    async getVisitorActivity(options) {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+        const params = {};
+        if (options?.page)
+            params.page = options.page.toString();
+        if (options?.limit)
+            params.limit = options.limit.toString();
+        if (options?.eventType)
+            params.eventType = options.eventType;
+        if (options?.startDate)
+            params.startDate = options.startDate;
+        if (options?.endDate)
+            params.endDate = options.endDate;
+        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/activity`, params);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor activity:', result.error);
+        return null;
+    }
+    /**
+     * Get a summarized journey timeline for the current visitor.
+     * Includes top pages, sessions, time spent, and recent activities.
+     */
+    async getVisitorTimeline() {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/timeline`);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor timeline:', result.error);
+        return null;
+    }
+    /**
+     * Get engagement metrics for the current visitor.
+     * Includes time on site, page views, bounce rate, and engagement score.
+     */
+    async getVisitorEngagement() {
+        if (!this.isInitialized) {
+            logger.warn('SDK not initialized');
+            return null;
+        }
+        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/engagement`);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor engagement:', result.error);
+        return null;
+    }
+    /**
      * Retry pending identify call
      */
     async retryPendingIdentify() {
@@ -3714,6 +4030,59 @@ class Tracker {
     debug(enabled) {
         logger.enabled = enabled;
         logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+    /**
+     * Register a schema for event validation.
+     * When debug mode is enabled, events will be validated against registered schemas.
+     *
+     * @example
+     * tracker.registerEventSchema('purchase', {
+     *   productId: 'string',
+     *   price: 'number',
+     *   quantity: 'number',
+     * });
+     */
+    registerEventSchema(eventType, schema) {
+        this.eventSchemas.set(eventType, schema);
+        logger.debug('Event schema registered:', eventType);
+    }
+    /**
+     * Validate event properties against a registered schema (debug mode only)
+     */
+    validateEventSchema(eventType, properties) {
+        if (!this.config.debug)
+            return;
+        const schema = this.eventSchemas.get(eventType);
+        if (!schema)
+            return;
+        for (const [key, expectedType] of Object.entries(schema)) {
+            const value = properties[key];
+            if (value === undefined) {
+                logger.warn(`[Schema] Missing property "${key}" for event type "${eventType}"`);
+                continue;
+            }
+            let valid = false;
+            switch (expectedType) {
+                case 'string':
+                    valid = typeof value === 'string';
+                    break;
+                case 'number':
+                    valid = typeof value === 'number';
+                    break;
+                case 'boolean':
+                    valid = typeof value === 'boolean';
+                    break;
+                case 'object':
+                    valid = typeof value === 'object' && !Array.isArray(value);
+                    break;
+                case 'array':
+                    valid = Array.isArray(value);
+                    break;
+            }
+            if (!valid) {
+                logger.warn(`[Schema] Property "${key}" for event "${eventType}" expected ${expectedType}, got ${typeof value}`);
+            }
+        }
     }
     /**
      * Get visitor ID
@@ -3754,6 +4123,8 @@ class Tracker {
         resetIds(this.config.useCookies);
         this.visitorId = this.createVisitorId();
         this.sessionId = this.createSessionId();
+        this.contactId = null;
+        this.pendingIdentify = null;
         this.queue.clear();
     }
     /**

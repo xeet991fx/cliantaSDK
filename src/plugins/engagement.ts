@@ -18,6 +18,9 @@ export class EngagementPlugin extends BasePlugin {
     private boundMarkEngaged: (() => void) | null = null;
     private boundTrackTimeOnPage: (() => void) | null = null;
     private boundVisibilityHandler: (() => void) | null = null;
+    /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
+    private navigationHandler: (() => void) | null = null;
+    private popstateHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -45,6 +48,15 @@ export class EngagementPlugin extends BasePlugin {
         // Track time on page before unload
         window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
         document.addEventListener('visibilitychange', this.boundVisibilityHandler);
+
+        // Listen for navigation events dispatched by PageViewPlugin
+        // instead of independently monkey-patching history.pushState
+        this.navigationHandler = () => this.resetForNavigation();
+        window.addEventListener('clianta:navigation', this.navigationHandler);
+
+        // Handle back/forward navigation
+        this.popstateHandler = () => this.resetForNavigation();
+        window.addEventListener('popstate', this.popstateHandler);
     }
 
     destroy(): void {
@@ -59,10 +71,28 @@ export class EngagementPlugin extends BasePlugin {
         if (this.boundVisibilityHandler && typeof document !== 'undefined') {
             document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
         }
+        if (this.navigationHandler && typeof window !== 'undefined') {
+            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            this.navigationHandler = null;
+        }
+        if (this.popstateHandler && typeof window !== 'undefined') {
+            window.removeEventListener('popstate', this.popstateHandler);
+            this.popstateHandler = null;
+        }
         if (this.engagementTimeout) {
             clearTimeout(this.engagementTimeout);
         }
         super.destroy();
+    }
+
+    private resetForNavigation(): void {
+        this.pageLoadTime = Date.now();
+        this.engagementStartTime = Date.now();
+        this.isEngaged = false;
+        if (this.engagementTimeout) {
+            clearTimeout(this.engagementTimeout);
+            this.engagementTimeout = null;
+        }
     }
 
     private markEngaged(): void {

@@ -9,7 +9,8 @@ Professional CRM and tracking SDK for lead generation with **automated email tri
 - 🤖 **Event Triggers & Automation** - Automated emails, tasks, and webhooks (like Salesforce & HubSpot)
 - 📧 **Email Notifications** - Send automated emails based on CRM actions
 - 🔒 **GDPR Compliant** - Built-in consent management
-- ⚡ **Framework Agnostic** - Works with React, Vue, Next.js, or vanilla JavaScript
+- 🔍 **Read-Back APIs** - Fetch visitor profiles, activity, timeline, and engagement metrics
+- ⚡ **Framework Support** - React, Vue, Angular, Svelte, Next.js, or vanilla JavaScript
 
 ## Installation
 
@@ -357,6 +358,60 @@ Reset visitor (for logout):
 
 ```typescript
 tracker.reset();
+```
+
+---
+
+## Read-Back APIs
+
+### Frontend (Own Visitor Data)
+
+Fetch the current visitor's data directly from the SDK:
+
+```typescript
+// Get visitor's CRM profile
+const profile = await tracker.getVisitorProfile();
+console.log(profile?.firstName, profile?.email, profile?.leadScore);
+
+// Get recent activity (paginated)
+const activity = await tracker.getVisitorActivity({ limit: 20 });
+activity?.data.forEach(event => {
+  console.log(event.eventType, event.eventName, event.timestamp);
+});
+
+// Get visitor journey timeline
+const timeline = await tracker.getVisitorTimeline();
+console.log('Total sessions:', timeline?.totalSessions);
+console.log('Time on site:', timeline?.totalTimeSpentSeconds, 'sec');
+
+// Get engagement metrics
+const engagement = await tracker.getVisitorEngagement();
+console.log('Score:', engagement?.engagementScore);
+```
+
+### Server-Side (Full CRM Access via API Key)
+
+```typescript
+import { CRMClient } from '@clianta/sdk';
+
+const crm = new CRMClient('https://api.clianta.online', 'workspace-id');
+crm.setApiKey('mm_live_xxxxx');
+
+// Look up contact by email
+const contact = await crm.getContactByEmail('user@example.com');
+
+// Get contact's activity history
+const activity = await crm.getContactActivity(contact.data._id, { limit: 50 });
+
+// Get engagement metrics
+const engagement = await crm.getContactEngagement(contact.data._id);
+
+// Search contacts
+const results = await crm.searchContacts('john', { status: 'lead' });
+
+// Manage webhooks
+const webhooks = await crm.listWebhooks();
+await crm.createWebhook({ url: 'https://example.com/hook', events: ['contact.created'] });
 ```
 
 ---

@@ -7,7 +7,7 @@
 import type { QueueConfig, TrackingEvent } from '../types';
 import { Transport } from './transport';
 import { logger } from './logger';
-import { getLocalStorage, setLocalStorage } from '../utils';
+import { getSessionStorage, setSessionStorage } from '../utils';
 import { STORAGE_KEYS } from './config';
 
 const MAX_QUEUE_SIZE = 1000;
@@ -27,6 +27,7 @@ export class EventQueue {
     private isFlushing = false;
     /** Rate limiting: timestamps of recent events */
     private eventTimestamps: number[] = [];
+    private persistMode: 'session' | 'local' | 'none';
     /** Unload handler references for cleanup */
     private boundBeforeUnload: (() => void) | null = null;
     private boundVisibilityChange: (() => void) | null = null;
@@ -40,6 +41,7 @@ export class EventQueue {
             maxQueueSize: config.maxQueueSize ?? MAX_QUEUE_SIZE,
             storageKey: config.storageKey ?? STORAGE_KEYS.EVENT_QUEUE,
         };
+        this.persistMode = (config as any).persistMode || 'session';
 
         // Restore persisted queue
         this.restoreQueue();
@@ -167,6 +169,10 @@ export class EventQueue {
     clear(): void {
         this.queue = [];
         this.persistQueue([]);
+        // Also clear localStorage if used
+        if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+            try { localStorage.removeItem(this.config.storageKey); } catch { /* ignore */ }
+        }
     }
 
     /**
@@ -228,22 +234,44 @@ export class EventQueue {
     }
 
     /**
-     * Persist queue to localStorage
+     * Persist queue to storage based on persistMode
      */
     private persistQueue(events: TrackingEvent[]): void {
+        if (this.persistMode === 'none') return;
         try {
-            setLocalStorage(this.config.storageKey, JSON.stringify(events));
+            const serialized = JSON.stringify(events);
+            if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.setItem(this.config.storageKey, serialized);
+                } catch {
+                    // localStorage quota exceeded — fallback to sessionStorage
+                    setSessionStorage(this.config.storageKey, serialized);
+                }
+            } else {
+                setSessionStorage(this.config.storageKey, serialized);
+            }
         } catch {
             // Ignore storage errors
         }
     }
 
     /**
-     * Restore queue from localStorage
+     * Restore queue from storage
      */
     private restoreQueue(): void {
         try {
-            const stored = getLocalStorage(this.config.storageKey);
+            let stored: string | null = null;
+
+            // Check localStorage first (cross-session persistence)
+            if (this.persistMode === 'local' && typeof localStorage !== 'undefined') {
+                stored = localStorage.getItem(this.config.storageKey);
+            }
+
+            // Fall back to sessionStorage
+            if (!stored) {
+                stored = getSessionStorage(this.config.storageKey);
+            }
+
             if (stored) {
                 const events = JSON.parse(stored) as TrackingEvent[];
                 if (Array.isArray(events) && events.length > 0) {

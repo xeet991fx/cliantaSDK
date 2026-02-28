@@ -1,5 +1,3 @@
-import { Plugin, Ref } from 'vue';
-
 /**
  * Clianta SDK - CRM API Client
  * @see SDK_VERSION in core/config.ts
@@ -212,112 +210,99 @@ interface VisitorActivityOptions {
 }
 
 /**
- * Clianta SDK - Vue 3 Integration
+ * Clianta SDK - Svelte Integration
  *
- * Provides plugin and composables for easy Vue 3 integration.
+ * Provides helpers for Svelte 4+ and Svelte 5 (SvelteKit) integration.
+ * Uses a store-based pattern that works with Svelte's reactivity system.
+ *
+ * @example
+ * // In +layout.svelte or root component:
+ * <script>
+ *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { setContext } from 'svelte';
+ *
+ *   const cliantaStore = initClianta({
+ *     projectId: 'your-project-id',
+ *     apiEndpoint: 'https://api.clianta.online',
+ *   });
+ *
+ *   setContext('clianta', cliantaStore);
+ * </script>
+ *
+ * // In child components:
+ * <script>
+ *   import { getContext } from 'svelte';
+ *   const clianta = getContext('clianta');
+ *
+ *   function handleClick() {
+ *     clianta.track('button_click', 'CTA', { page: 'home' });
+ *   }
+ * </script>
  */
 
-interface CliantaPluginOptions extends CliantaConfig {
-    /** Project ID (required) */
+interface CliantaSvelteConfig extends CliantaConfig {
+    /** Project/workspace ID (required) */
     projectId: string;
 }
+interface CliantaStore {
+    /** The underlying tracker instance */
+    readonly tracker: TrackerCore | null;
+    /** Track a custom event */
+    track(eventType: string, eventName: string, properties?: Record<string, unknown>): void;
+    /** Identify a visitor by email */
+    identify(email: string, traits?: UserTraits): Promise<string | null>;
+    /** Track a page view */
+    page(name?: string, properties?: Record<string, unknown>): void;
+    /** Update consent state */
+    consent(state: ConsentState): void;
+    /** Get visitor ID */
+    getVisitorId(): string | undefined;
+    /** Get session ID */
+    getSessionId(): string | undefined;
+    /** Force flush events */
+    flush(): Promise<void>;
+    /** Reset visitor data (for logout) */
+    reset(): void;
+    /** Clean up tracker */
+    destroy(): void;
+}
 /**
- * Vue plugin for Clianta SDK
+ * Initialize Clianta tracker and return a store-like object.
  *
- * @example
- * // In main.ts:
- * import { createApp } from 'vue';
- * import { CliantaPlugin } from '@clianta/sdk/vue';
- * import App from './App.vue';
+ * Use with Svelte's context API:
+ * ```svelte
+ * <script>
+ *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { setContext } from 'svelte';
  *
- * const app = createApp(App);
- * app.use(CliantaPlugin, {
- *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
- *   debug: import.meta.env.DEV,
- * });
- * app.mount('#app');
- */
-declare const CliantaPlugin: Plugin<CliantaPluginOptions>;
-/**
- * useClianta - Composable to access tracker
- *
- * @example
- * <script setup>
- * import { useClianta } from '@clianta/sdk/vue';
- *
- * const tracker = useClianta();
- * tracker.value?.track('button_click', 'CTA Button');
+ *   const clianta = initClianta({ projectId: 'xxx' });
+ *   setContext('clianta', clianta);
  * </script>
+ * ```
+ *
+ * @param config - Configuration including projectId
+ * @returns CliantaStore with tracker methods
  */
-declare function useClianta(): Ref<TrackerCore | null>;
+declare function initClianta(config: CliantaSvelteConfig): CliantaStore;
 /**
- * useCliantaTrack - Composable for tracking events
+ * Svelte action for tracking element clicks.
  *
  * @example
- * <script setup>
- * import { useCliantaTrack } from '@clianta/sdk/vue';
+ * <button use:trackClick={{ eventName: 'CTA Clicked', properties: { page: 'home' } }}>
+ *   Click Me
+ * </button>
  *
- * const track = useCliantaTrack();
- * track('purchase', 'Order Completed', { orderId: '123' });
- * </script>
+ * @param node - The DOM element
+ * @param params - Track parameters including tracker store, event name, and optional properties
  */
-declare function useCliantaTrack(): (eventType: string, eventName: string, properties?: Record<string, unknown>) => void;
-/**
- * useCliantaIdentify - Composable for identifying users
- *
- * @example
- * <script setup>
- * import { useCliantaIdentify } from '@clianta/sdk/vue';
- *
- * const identify = useCliantaIdentify();
- * identify('user@example.com', { name: 'John' });
- * </script>
- */
-declare function useCliantaIdentify(): (email: string, traits?: Record<string, unknown>) => any;
-/**
- * useCliantaPageView - Composable for manual page view tracking
- *
- * @example
- * <script setup>
- * import { useCliantaPageView } from '@clianta/sdk/vue';
- * import { watch } from 'vue';
- * import { useRoute } from 'vue-router';
- *
- * const route = useRoute();
- * const trackPageView = useCliantaPageView();
- *
- * watch(() => route.path, () => {
- *   trackPageView(route.name?.toString());
- * });
- * </script>
- */
-declare function useCliantaPageView(): (name?: string, properties?: Record<string, unknown>) => void;
-/**
- * useCliantaConsent - Composable for managing consent
- *
- * @example
- * <script setup>
- * import { useCliantaConsent } from '@clianta/sdk/vue';
- *
- * const { consent, getConsentState } = useCliantaConsent();
- * consent({ analytics: true, marketing: false });
- * </script>
- */
-declare function useCliantaConsent(): {
-    consent: (state: {
-        analytics?: boolean;
-        marketing?: boolean;
-        personalization?: boolean;
-    }) => void;
-    getConsentState: () => any;
+declare function trackClick(node: HTMLElement, params: {
+    store: CliantaStore;
+    eventName: string;
+    properties?: Record<string, unknown>;
+}): {
+    update(newParams: typeof params): void;
+    destroy(): void;
 };
 
-declare module 'vue' {
-    interface ComponentCustomProperties {
-        $clianta: TrackerCore;
-    }
-}
-
-export { CliantaPlugin, useClianta, useCliantaConsent, useCliantaIdentify, useCliantaPageView, useCliantaTrack };
-export type { CliantaConfig, CliantaPluginOptions, TrackerCore };
+export { initClianta, trackClick };
+export type { CliantaConfig, CliantaStore, CliantaSvelteConfig, TrackerCore };

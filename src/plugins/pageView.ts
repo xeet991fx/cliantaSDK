@@ -29,14 +29,17 @@ export class PageViewPlugin extends BasePlugin {
 
             // Intercept pushState and replaceState
             const self = this;
-            history.pushState = function(...args) {
+            history.pushState = function (...args) {
                 self.originalPushState!.apply(history, args);
                 self.trackPageView();
+                // Notify other plugins (e.g. ScrollPlugin) about navigation
+                window.dispatchEvent(new Event('clianta:navigation'));
             };
 
-            history.replaceState = function(...args) {
+            history.replaceState = function (...args) {
                 self.originalReplaceState!.apply(history, args);
                 self.trackPageView();
+                window.dispatchEvent(new Event('clianta:navigation'));
             };
 
             // Handle back/forward navigation

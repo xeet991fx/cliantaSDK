@@ -162,4 +162,88 @@ export default [
         external: ['vue'],
         plugins: [dts()],
     },
+
+    // Angular integration builds (ESM, CJS)
+    {
+        input: 'src/angular.ts',
+        output: [
+            {
+                file: 'dist/angular.esm.js',
+                format: 'esm',
+                banner,
+                sourcemap: true,
+            },
+            {
+                file: 'dist/angular.cjs.js',
+                format: 'cjs',
+                banner,
+                sourcemap: true,
+                exports: 'named',
+            },
+        ],
+        external: ['@angular/core'],
+        plugins: [
+            resolve({
+                browser: true,
+            }),
+            commonjs(),
+            typescript({
+                tsconfig: './tsconfig.json',
+                declaration: false,
+            }),
+        ],
+    },
+
+    // TypeScript declarations - angular
+    {
+        input: 'src/angular.ts',
+        output: {
+            file: 'dist/angular.d.ts',
+            format: 'es',
+        },
+        external: ['@angular/core'],
+        plugins: [dts()],
+    },
+
+    // Svelte integration builds (ESM, CJS)
+    {
+        input: 'src/svelte.ts',
+        output: [
+            {
+                file: 'dist/svelte.esm.js',
+                format: 'esm',
+                banner,
+                sourcemap: true,
+            },
+            {
+                file: 'dist/svelte.cjs.js',
+                format: 'cjs',
+                banner,
+                sourcemap: true,
+                exports: 'named',
+            },
+        ],
+        external: ['svelte', 'svelte/store'],
+        plugins: [
+            resolve({
+                browser: true,
+            }),
+            commonjs(),
+            typescript({
+                tsconfig: './tsconfig.json',
+                declaration: false,
+            }),
+        ],
+    },
+
+    // TypeScript declarations - svelte
+    {
+        input: 'src/svelte.ts',
+        output: {
+            file: 'dist/svelte.d.ts',
+            format: 'es',
+        },
+        external: ['svelte', 'svelte/store'],
+        plugins: [dts()],
+    },
 ];

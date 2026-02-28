@@ -433,4 +433,107 @@ describe('CRMClient', () => {
             );
         });
     });
+
+    describe('Read-Back Methods', () => {
+        it('should get contact by email', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ data: { email: 'john@example.com', firstName: 'John' } }),
+            });
+
+            const result = await client.getContactByEmail('john@example.com');
+            expect(result.success).toBe(true);
+            expect(global.fetch).toHaveBeenCalledWith(
+                expect.stringContaining('search=john%40example.com'),
+                expect.anything()
+            );
+        });
+
+        it('should validate email parameter in getContactByEmail', async () => {
+            await expect(client.getContactByEmail('')).rejects.toThrow('email is required');
+        });
+
+        it('should get contact activity', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ data: { data: [], pagination: { page: 1, total: 0 } } }),
+            });
+
+            const result = await client.getContactActivity('contact-1', { page: 1, limit: 10 });
+            expect(result.success).toBe(true);
+        });
+
+        it('should get contact engagement', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    data: { totalTimeOnSiteSeconds: 3600, engagementScore: 80 },
+                }),
+            });
+
+            const result = await client.getContactEngagement('contact-1');
+            expect(result.success).toBe(true);
+        });
+
+        it('should get contact timeline', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ data: { data: [], pagination: { page: 1, total: 0 } } }),
+            });
+
+            const result = await client.getContactTimeline('contact-1');
+            expect(result.success).toBe(true);
+        });
+
+        it('should search contacts', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ data: { data: [], pagination: { page: 1, total: 0 } } }),
+            });
+
+            const result = await client.searchContacts('john', { status: 'lead', page: 1 });
+            expect(result.success).toBe(true);
+            expect(global.fetch).toHaveBeenCalledWith(
+                expect.stringContaining('search=john'),
+                expect.anything()
+            );
+        });
+    });
+
+    describe('Webhook Methods', () => {
+        it('should list webhooks', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ data: { data: [], pagination: { page: 1, total: 0 } } }),
+            });
+
+            const result = await client.listWebhooks();
+            expect(result.success).toBe(true);
+        });
+
+        it('should create webhook', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    data: { _id: 'wh-1', url: 'https://example.com/hook', events: ['contact.created'] },
+                }),
+            });
+
+            const result = await client.createWebhook({
+                url: 'https://example.com/hook',
+                events: ['contact.created'],
+            });
+            expect(result.success).toBe(true);
+        });
+
+        it('should delete webhook', async () => {
+            (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ success: true }),
+            });
+
+            const result = await client.deleteWebhook('wh-1');
+            expect(result.success).toBe(true);
+        });
+    });
 });

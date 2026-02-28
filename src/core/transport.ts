@@ -102,6 +102,42 @@ export class Transport {
     }
 
     /**
+     * Fetch data from the tracking API (GET request)
+     * Used for read-back APIs (visitor profile, activity, etc.)
+     */
+    async fetchData<T = unknown>(path: string, params?: Record<string, string>): Promise<{ success: boolean; data?: T; status?: number; error?: Error }> {
+        const url = new URL(`${this.config.apiEndpoint}${path}`);
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    url.searchParams.set(key, value);
+                }
+            });
+        }
+
+        try {
+            const response = await this.fetchWithTimeout(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const body = await response.json();
+                logger.debug('Fetch successful:', path);
+                return { success: true, data: body.data ?? body, status: response.status };
+            }
+
+            logger.error(`Fetch failed with status ${response.status}`);
+            return { success: false, status: response.status };
+        } catch (error) {
+            logger.error('Fetch request failed:', error);
+            return { success: false, error: error as Error };
+        }
+    }
+
+    /**
      * Internal send with retry logic
      */
     private async send(url: string, payload: string, attempt = 1): Promise<TransportResult> {

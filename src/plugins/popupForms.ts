@@ -57,6 +57,8 @@ export class PopupFormsPlugin extends BasePlugin {
     private shownForms: Set<string> = new Set();
     private scrollHandler: (() => void) | null = null;
     private exitHandler: ((e: MouseEvent) => void) | null = null;
+    private delayTimers: ReturnType<typeof setTimeout>[] = [];
+    private clickTriggerListeners: { element: Element; handler: () => void }[] = [];
 
     async init(tracker: TrackerCore): Promise<void> {
         super.init(tracker);
@@ -75,6 +77,14 @@ export class PopupFormsPlugin extends BasePlugin {
 
     destroy(): void {
         this.removeTriggers();
+        for (const timer of this.delayTimers) {
+            clearTimeout(timer);
+        }
+        this.delayTimers = [];
+        for (const { element, handler } of this.clickTriggerListeners) {
+            element.removeEventListener('click', handler);
+        }
+        this.clickTriggerListeners = [];
         super.destroy();
     }
 
@@ -142,7 +152,7 @@ export class PopupFormsPlugin extends BasePlugin {
         this.forms.forEach(form => {
             switch (form.trigger.type) {
                 case 'delay':
-                    setTimeout(() => this.showForm(form), (form.trigger.value || 5) * 1000);
+                    this.delayTimers.push(setTimeout(() => this.showForm(form), (form.trigger.value || 5) * 1000));
                     break;
                 case 'scroll':
                     this.setupScrollTrigger(form);
@@ -191,7 +201,9 @@ export class PopupFormsPlugin extends BasePlugin {
 
         const elements = document.querySelectorAll(form.trigger.selector);
         elements.forEach(el => {
-            el.addEventListener('click', () => this.showForm(form));
+            const handler = () => this.showForm(form);
+            el.addEventListener('click', handler);
+            this.clickTriggerListeners.push({ element: el, handler });
         });
     }
 
@@ -510,7 +522,7 @@ export class PopupFormsPlugin extends BasePlugin {
         const submitBtn = formElement.querySelector('button[type="submit"]') as HTMLButtonElement;
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = 'Submitting...';
+            submitBtn.textContent = 'Submitting...';
         }
 
         try {
@@ -562,11 +574,22 @@ export class PopupFormsPlugin extends BasePlugin {
                     this.tracker?.identify(data.email, data);
                 }
 
-                // Redirect if configured
+                // Redirect if configured (validate URL to prevent open redirect)
                 if (form.redirectUrl) {
-                    setTimeout(() => {
-                        window.location.href = form.redirectUrl!;
-                    }, 1500);
+                    try {
+                        const redirect = new URL(form.redirectUrl, window.location.origin);
+                        const isSameOrigin = redirect.origin === window.location.origin;
+                        const isSafeProtocol = redirect.protocol === 'https:' || redirect.protocol === 'http:';
+                        if (isSameOrigin || isSafeProtocol) {
+                            setTimeout(() => {
+                                window.location.href = redirect.href;
+                            }, 1500);
+                        } else {
+                            console.warn('[Clianta] Blocked unsafe redirect URL:', form.redirectUrl);
+                        }
+                    } catch {
+                        console.warn('[Clianta] Invalid redirect URL:', form.redirectUrl);
+                    }
                 }
 
                 // Close after delay
@@ -581,7 +604,7 @@ export class PopupFormsPlugin extends BasePlugin {
             console.error('[Clianta] Form submit error:', error);
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = form.submitButtonText || 'Subscribe';
+                submitBtn.textContent = form.submitButtonText || 'Subscribe';
             }
         }
     }

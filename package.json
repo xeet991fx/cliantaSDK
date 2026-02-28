@@ -25,6 +25,18 @@
             "import": "./dist/vue.esm.js",
             "require": "./dist/vue.cjs.js",
             "default": "./dist/vue.esm.js"
+        },
+        "./angular": {
+            "types": "./dist/angular.d.ts",
+            "import": "./dist/angular.esm.js",
+            "require": "./dist/angular.cjs.js",
+            "default": "./dist/angular.esm.js"
+        },
+        "./svelte": {
+            "types": "./dist/svelte.d.ts",
+            "import": "./dist/svelte.esm.js",
+            "require": "./dist/svelte.cjs.js",
+            "default": "./dist/svelte.esm.js"
         }
     },
     "files": [
@@ -65,13 +77,20 @@
     },
     "peerDependencies": {
         "react": ">=17.0.0",
-        "vue": ">=3.0.0"
+        "vue": ">=3.0.0",
+        "svelte": ">=4.0.0"
     },
     "peerDependenciesMeta": {
         "react": {
             "optional": true
         },
         "vue": {
+            "optional": true
+        },
+        "@angular/core": {
+            "optional": true
+        },
+        "svelte": {
             "optional": true
         }
     },

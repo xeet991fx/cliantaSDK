@@ -64,6 +64,8 @@ interface CliantaConfig {
     useCookies?: boolean;
     /** Cookie-less mode: use sessionStorage only (no persistent storage) */
     cookielessMode?: boolean;
+    /** Queue persistence mode: 'session' (default), 'local' (survives browser restart), 'none' */
+    persistMode?: 'session' | 'local' | 'none';
 }
 type PluginName = 'pageView' | 'forms' | 'scroll' | 'clicks' | 'engagement' | 'downloads' | 'exitIntent' | 'errors' | 'performance' | 'popupForms';
 interface ConsentConfig {
@@ -120,8 +122,94 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Get the current visitor's profile from the CRM */
+    getVisitorProfile(): Promise<VisitorProfile | null>;
+    /** Get the current visitor's recent activity */
+    getVisitorActivity(options?: VisitorActivityOptions): Promise<{
+        data: VisitorActivity[];
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            pages: number;
+        };
+    } | null>;
+    /** Get a summarized journey timeline for the current visitor */
+    getVisitorTimeline(): Promise<VisitorTimeline | null>;
+    /** Get engagement metrics for the current visitor */
+    getVisitorEngagement(): Promise<EngagementMetrics | null>;
     /** Send a server-side inbound event (requires apiKey in config) */
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
+}
+interface VisitorProfile {
+    visitorId: string;
+    contactId?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    status?: string;
+    lifecycleStage?: string;
+    tags?: string[];
+    leadScore?: number;
+    firstSeen?: string;
+    lastSeen?: string;
+    sessionCount?: number;
+    pageViewCount?: number;
+    totalTimeSpent?: number;
+    customFields?: Record<string, unknown>;
+}
+interface VisitorActivity {
+    _id?: string;
+    eventType: string;
+    eventName: string;
+    url: string;
+    properties?: Record<string, unknown>;
+    timestamp: string;
+}
+interface VisitorTimeline {
+    visitorId: string;
+    contactId?: string;
+    firstSeen: string;
+    lastSeen: string;
+    totalSessions: number;
+    totalPageViews: number;
+    totalEvents: number;
+    totalTimeSpentSeconds: number;
+    averageSessionDurationSeconds: number;
+    topPages: Array<{
+        url: string;
+        views: number;
+        avgTimeSeconds?: number;
+    }>;
+    recentActivities: VisitorActivity[];
+    devices: Array<{
+        userAgent: string;
+        lastSeen: string;
+    }>;
+}
+interface EngagementMetrics {
+    visitorId: string;
+    totalTimeOnSiteSeconds: number;
+    averageSessionDurationSeconds: number;
+    totalPageViews: number;
+    totalSessions: number;
+    engagementScore: number;
+    bounceRate: number;
+    lastActiveAt: string;
+    topEvents: Array<{
+        eventType: string;
+        count: number;
+    }>;
+}
+interface VisitorActivityOptions {
+    page?: number;
+    limit?: number;
+    eventType?: string;
+    startDate?: string;
+    endDate?: string;
 }
 
 interface CliantaProviderProps {

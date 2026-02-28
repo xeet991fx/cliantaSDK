@@ -65,6 +65,7 @@ export const DEFAULT_CONFIG: Required<CliantaConfig> = {
     cookieDomain: '',
     useCookies: false,
     cookielessMode: false,
+    persistMode: 'session',
 };
 
 /** Storage keys */

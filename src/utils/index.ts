@@ -107,7 +107,9 @@ export function cookie(name: string, value?: string, days?: number): string | nu
         date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
         expires = '; expires=' + date.toUTCString();
     }
-    document.cookie = name + '=' + value + expires + '; path=/; SameSite=Lax';
+    // Add Secure flag on HTTPS to prevent cookie leakage over plaintext
+    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = name + '=' + value + expires + '; path=/; SameSite=Lax' + secure;
     return value;
 }
 
@@ -290,6 +292,18 @@ export function isMobile(): boolean {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent
     );
+}
+
+// ============================================
+// VALIDATION UTILITIES
+// ============================================
+
+/**
+ * Validate email format
+ */
+export function isValidEmail(email: string): boolean {
+    if (typeof email !== 'string' || !email) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 // ============================================

@@ -3,10 +3,6 @@
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
-'use strict';
-
-var vue = require('vue');
-
 /**
  * Clianta SDK - Configuration
  * @see SDK_VERSION in core/config.ts
@@ -4247,153 +4243,132 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Clianta SDK - Vue 3 Integration
+ * Clianta SDK - Svelte Integration
  *
- * Provides plugin and composables for easy Vue 3 integration.
- */
-// Injection key for tracker
-const CliantaKey = Symbol('clianta');
-/**
- * Vue plugin for Clianta SDK
+ * Provides helpers for Svelte 4+ and Svelte 5 (SvelteKit) integration.
+ * Uses a store-based pattern that works with Svelte's reactivity system.
  *
  * @example
- * // In main.ts:
- * import { createApp } from 'vue';
- * import { CliantaPlugin } from '@clianta/sdk/vue';
- * import App from './App.vue';
+ * // In +layout.svelte or root component:
+ * <script>
+ *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { setContext } from 'svelte';
  *
- * const app = createApp(App);
- * app.use(CliantaPlugin, {
- *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
- *   debug: import.meta.env.DEV,
- * });
- * app.mount('#app');
- */
-const CliantaPlugin = {
-    install(app, options) {
-        if (!options?.projectId) {
-            console.error('[Clianta] Missing projectId in plugin options');
-            return;
-        }
-        const { projectId, ...config } = options;
-        const tracker = clianta(projectId, config);
-        // Provide tracker to all components
-        app.provide(CliantaKey, vue.ref(tracker));
-        // Add global property for Options API access
-        app.config.globalProperties.$clianta = tracker;
-        // Flush on app unmount
-        app.mixin({
-            beforeUnmount() {
-                // Only flush on root component unmount
-                if (this.$.parent === null) {
-                    tracker.flush();
-                }
-            },
-        });
-    },
-};
-/**
- * useClianta - Composable to access tracker
+ *   const cliantaStore = initClianta({
+ *     projectId: 'your-project-id',
+ *     apiEndpoint: 'https://api.clianta.online',
+ *   });
  *
- * @example
- * <script setup>
- * import { useClianta } from '@clianta/sdk/vue';
+ *   setContext('clianta', cliantaStore);
+ * </script>
  *
- * const tracker = useClianta();
- * tracker.value?.track('button_click', 'CTA Button');
+ * // In child components:
+ * <script>
+ *   import { getContext } from 'svelte';
+ *   const clianta = getContext('clianta');
+ *
+ *   function handleClick() {
+ *     clianta.track('button_click', 'CTA', { page: 'home' });
+ *   }
  * </script>
  */
-function useClianta() {
-    const tracker = vue.inject(CliantaKey);
-    if (!tracker) {
-        console.warn('[Clianta] useClianta must be used within a component where CliantaPlugin is installed');
-        return vue.ref(null);
+/**
+ * Initialize Clianta tracker and return a store-like object.
+ *
+ * Use with Svelte's context API:
+ * ```svelte
+ * <script>
+ *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { setContext } from 'svelte';
+ *
+ *   const clianta = initClianta({ projectId: 'xxx' });
+ *   setContext('clianta', clianta);
+ * </script>
+ * ```
+ *
+ * @param config - Configuration including projectId
+ * @returns CliantaStore with tracker methods
+ */
+function initClianta(config) {
+    if (!config.projectId) {
+        console.error('[Clianta] Missing projectId in Svelte config');
+        return createNullStore();
     }
-    return tracker;
-}
-/**
- * useCliantaTrack - Composable for tracking events
- *
- * @example
- * <script setup>
- * import { useCliantaTrack } from '@clianta/sdk/vue';
- *
- * const track = useCliantaTrack();
- * track('purchase', 'Order Completed', { orderId: '123' });
- * </script>
- */
-function useCliantaTrack() {
-    const tracker = useClianta();
-    return (eventType, eventName, properties) => {
-        tracker.value?.track(eventType, eventName, properties);
-    };
-}
-/**
- * useCliantaIdentify - Composable for identifying users
- *
- * @example
- * <script setup>
- * import { useCliantaIdentify } from '@clianta/sdk/vue';
- *
- * const identify = useCliantaIdentify();
- * identify('user@example.com', { name: 'John' });
- * </script>
- */
-function useCliantaIdentify() {
-    const tracker = useClianta();
-    return (email, traits) => {
-        return tracker.value?.identify(email, traits);
-    };
-}
-/**
- * useCliantaPageView - Composable for manual page view tracking
- *
- * @example
- * <script setup>
- * import { useCliantaPageView } from '@clianta/sdk/vue';
- * import { watch } from 'vue';
- * import { useRoute } from 'vue-router';
- *
- * const route = useRoute();
- * const trackPageView = useCliantaPageView();
- *
- * watch(() => route.path, () => {
- *   trackPageView(route.name?.toString());
- * });
- * </script>
- */
-function useCliantaPageView() {
-    const tracker = useClianta();
-    return (name, properties) => {
-        tracker.value?.page(name, properties);
-    };
-}
-/**
- * useCliantaConsent - Composable for managing consent
- *
- * @example
- * <script setup>
- * import { useCliantaConsent } from '@clianta/sdk/vue';
- *
- * const { consent, getConsentState } = useCliantaConsent();
- * consent({ analytics: true, marketing: false });
- * </script>
- */
-function useCliantaConsent() {
-    const tracker = useClianta();
+    const { projectId, ...options } = config;
+    const tracker = clianta(projectId, options);
     return {
-        consent: (state) => {
-            tracker.value?.consent(state);
+        get tracker() { return tracker; },
+        track(eventType, eventName, properties) {
+            tracker.track(eventType, eventName, properties);
         },
-        getConsentState: () => tracker.value?.getConsentState(),
+        identify(email, traits) {
+            return tracker.identify(email, traits);
+        },
+        page(name, properties) {
+            tracker.page(name, properties);
+        },
+        consent(state) {
+            tracker.consent(state);
+        },
+        getVisitorId() {
+            return tracker.getVisitorId();
+        },
+        getSessionId() {
+            return tracker.getSessionId();
+        },
+        async flush() {
+            await tracker.flush();
+        },
+        reset() {
+            tracker.reset();
+        },
+        async destroy() {
+            await tracker.destroy();
+        },
+    };
+}
+/**
+ * Create a null store for when initialization fails
+ */
+function createNullStore() {
+    return {
+        get tracker() { return null; },
+        track() { },
+        identify() { return Promise.resolve(null); },
+        page() { },
+        consent() { },
+        getVisitorId() { return undefined; },
+        getSessionId() { return undefined; },
+        flush() { return Promise.resolve(); },
+        reset() { },
+        destroy() { },
+    };
+}
+/**
+ * Svelte action for tracking element clicks.
+ *
+ * @example
+ * <button use:trackClick={{ eventName: 'CTA Clicked', properties: { page: 'home' } }}>
+ *   Click Me
+ * </button>
+ *
+ * @param node - The DOM element
+ * @param params - Track parameters including tracker store, event name, and optional properties
+ */
+function trackClick(node, params) {
+    function handleClick() {
+        params.store.track('button_click', params.eventName, params.properties);
+    }
+    node.addEventListener('click', handleClick);
+    return {
+        update(newParams) {
+            params = newParams;
+        },
+        destroy() {
+            node.removeEventListener('click', handleClick);
+        },
     };
 }
 
-exports.CliantaPlugin = CliantaPlugin;
-exports.useClianta = useClianta;
-exports.useCliantaConsent = useCliantaConsent;
-exports.useCliantaIdentify = useCliantaIdentify;
-exports.useCliantaPageView = useCliantaPageView;
-exports.useCliantaTrack = useCliantaTrack;
-//# sourceMappingURL=vue.cjs.js.map
+export { initClianta, trackClick };
+//# sourceMappingURL=svelte.esm.js.map

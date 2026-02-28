@@ -478,6 +478,86 @@ declare class CRMClient {
         messageId: string;
     }>>;
     /**
+     * Get a contact by email address.
+     * Returns the first matching contact from a search query.
+     */
+    getContactByEmail(email: string): Promise<ApiResponse<PaginatedResponse<Contact>>>;
+    /**
+     * Get activity timeline for a contact
+     */
+    getContactActivity(contactId: string, params?: {
+        page?: number;
+        limit?: number;
+        type?: string;
+        startDate?: string;
+        endDate?: string;
+    }): Promise<ApiResponse<PaginatedResponse<Activity>>>;
+    /**
+     * Get engagement metrics for a contact (via their linked visitor data)
+     */
+    getContactEngagement(contactId: string): Promise<ApiResponse<{
+        totalTimeOnSiteSeconds: number;
+        averageSessionDurationSeconds: number;
+        totalPageViews: number;
+        totalSessions: number;
+        engagementScore: number;
+        lastActiveAt: string;
+    }>>;
+    /**
+     * Get a full timeline for a contact including events, activities, and opportunities
+     */
+    getContactTimeline(contactId: string, params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<{
+        type: 'event' | 'activity' | 'opportunity' | 'note';
+        title: string;
+        description?: string;
+        timestamp: string;
+        metadata?: Record<string, unknown>;
+    }>>>;
+    /**
+     * Search contacts with advanced filters
+     */
+    searchContacts(query: string, filters?: {
+        status?: string;
+        lifecycleStage?: string;
+        source?: string;
+        tags?: string[];
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Contact>>>;
+    /**
+     * List all webhook subscriptions
+     */
+    listWebhooks(params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<{
+        _id: string;
+        url: string;
+        events: string[];
+        isActive: boolean;
+        createdAt: string;
+    }>>>;
+    /**
+     * Create a new webhook subscription
+     */
+    createWebhook(data: {
+        url: string;
+        events: string[];
+        secret?: string;
+    }): Promise<ApiResponse<{
+        _id: string;
+        url: string;
+        events: string[];
+        isActive: boolean;
+    }>>;
+    /**
+     * Delete a webhook subscription
+     */
+    deleteWebhook(webhookId: string): Promise<ApiResponse<void>>;
+    /**
      * Get all event triggers
      */
     getEventTriggers(): Promise<ApiResponse<EventTrigger[]>>;
@@ -528,6 +608,8 @@ interface CliantaConfig {
     useCookies?: boolean;
     /** Cookie-less mode: use sessionStorage only (no persistent storage) */
     cookielessMode?: boolean;
+    /** Queue persistence mode: 'session' (default), 'local' (survives browser restart), 'none' */
+    persistMode?: 'session' | 'local' | 'none';
 }
 type PluginName = 'pageView' | 'forms' | 'scroll' | 'clicks' | 'engagement' | 'downloads' | 'exitIntent' | 'errors' | 'performance' | 'popupForms';
 interface ConsentConfig {
@@ -631,6 +713,22 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Get the current visitor's profile from the CRM */
+    getVisitorProfile(): Promise<VisitorProfile | null>;
+    /** Get the current visitor's recent activity */
+    getVisitorActivity(options?: VisitorActivityOptions): Promise<{
+        data: VisitorActivity[];
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            pages: number;
+        };
+    } | null>;
+    /** Get a summarized journey timeline for the current visitor */
+    getVisitorTimeline(): Promise<VisitorTimeline | null>;
+    /** Get engagement metrics for the current visitor */
+    getVisitorEngagement(): Promise<EngagementMetrics | null>;
     /** Send a server-side inbound event (requires apiKey in config) */
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
 }
@@ -892,11 +990,83 @@ interface TriggerExecution {
     /** Execution timestamp */
     executedAt: string;
 }
-
-/**
- * Clianta SDK - Main Tracker Class
- * @see SDK_VERSION in core/config.ts
- */
+interface VisitorProfile {
+    visitorId: string;
+    contactId?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    status?: string;
+    lifecycleStage?: string;
+    tags?: string[];
+    leadScore?: number;
+    firstSeen?: string;
+    lastSeen?: string;
+    sessionCount?: number;
+    pageViewCount?: number;
+    totalTimeSpent?: number;
+    customFields?: Record<string, unknown>;
+}
+interface VisitorActivity {
+    _id?: string;
+    eventType: string;
+    eventName: string;
+    url: string;
+    properties?: Record<string, unknown>;
+    timestamp: string;
+}
+interface VisitorTimeline {
+    visitorId: string;
+    contactId?: string;
+    firstSeen: string;
+    lastSeen: string;
+    totalSessions: number;
+    totalPageViews: number;
+    totalEvents: number;
+    totalTimeSpentSeconds: number;
+    averageSessionDurationSeconds: number;
+    topPages: Array<{
+        url: string;
+        views: number;
+        avgTimeSeconds?: number;
+    }>;
+    recentActivities: VisitorActivity[];
+    devices: Array<{
+        userAgent: string;
+        lastSeen: string;
+    }>;
+}
+interface EngagementMetrics {
+    visitorId: string;
+    totalTimeOnSiteSeconds: number;
+    averageSessionDurationSeconds: number;
+    totalPageViews: number;
+    totalSessions: number;
+    engagementScore: number;
+    bounceRate: number;
+    lastActiveAt: string;
+    topEvents: Array<{
+        eventType: string;
+        count: number;
+    }>;
+}
+interface VisitorActivityOptions {
+    page?: number;
+    limit?: number;
+    eventType?: string;
+    startDate?: string;
+    endDate?: string;
+}
+interface ContactTimelineOptions {
+    page?: number;
+    limit?: number;
+    includeEvents?: boolean;
+    includeActivities?: boolean;
+    includeOpportunities?: boolean;
+}
 
 /**
  * Main Clianta Tracker Class
@@ -915,6 +1085,8 @@ declare class Tracker implements TrackerCore {
     private contactId;
     /** Pending identify retry on next flush */
     private pendingIdentify;
+    /** Registered event schemas for validation */
+    private eventSchemas;
     constructor(workspaceId: string, userConfig?: CliantaConfig);
     /**
      * Create visitor ID based on storage mode
@@ -953,6 +1125,35 @@ declare class Tracker implements TrackerCore {
      */
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
     /**
+     * Get the current visitor's profile from the CRM.
+     * Returns visitor data and linked contact info if identified.
+     * Only returns data for the current visitor (privacy-safe for frontend).
+     */
+    getVisitorProfile(): Promise<VisitorProfile | null>;
+    /**
+     * Get the current visitor's recent activity/events.
+     * Returns paginated list of tracking events for this visitor.
+     */
+    getVisitorActivity(options?: VisitorActivityOptions): Promise<{
+        data: VisitorActivity[];
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            pages: number;
+        };
+    } | null>;
+    /**
+     * Get a summarized journey timeline for the current visitor.
+     * Includes top pages, sessions, time spent, and recent activities.
+     */
+    getVisitorTimeline(): Promise<VisitorTimeline | null>;
+    /**
+     * Get engagement metrics for the current visitor.
+     * Includes time on site, page views, bounce rate, and engagement score.
+     */
+    getVisitorEngagement(): Promise<EngagementMetrics | null>;
+    /**
      * Retry pending identify call
      */
     private retryPendingIdentify;
@@ -968,6 +1169,22 @@ declare class Tracker implements TrackerCore {
      * Toggle debug mode
      */
     debug(enabled: boolean): void;
+    /**
+     * Register a schema for event validation.
+     * When debug mode is enabled, events will be validated against registered schemas.
+     *
+     * @example
+     * tracker.registerEventSchema('purchase', {
+     *   productId: 'string',
+     *   price: 'number',
+     *   quantity: 'number',
+     * });
+     */
+    registerEventSchema(eventType: string, schema: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>): void;
+    /**
+     * Validate event properties against a registered schema (debug mode only)
+     */
+    private validateEventSchema;
     /**
      * Get visitor ID
      */
@@ -1133,4 +1350,4 @@ declare const SDK_VERSION = "1.4.0";
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
 export { CRMClient, ConsentManager, EventTriggersManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactUpdateAction, EmailAction, EmailTemplate, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, WebhookAction };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactTimelineOptions, ContactUpdateAction, EmailAction, EmailTemplate, EngagementMetrics, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, VisitorActivity, VisitorActivityOptions, VisitorProfile, VisitorTimeline, WebhookAction };

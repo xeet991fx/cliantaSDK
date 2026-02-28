@@ -893,6 +893,181 @@ export class CRMClient {
     }
 
     // ============================================
+    // READ-BACK / DATA RETRIEVAL API
+    // ============================================
+
+    /**
+     * Get a contact by email address.
+     * Returns the first matching contact from a search query.
+     */
+    async getContactByEmail(email: string): Promise<ApiResponse<PaginatedResponse<Contact>>> {
+        this.validateRequired('email', email, 'getContactByEmail');
+        const queryParams = new URLSearchParams({ search: email, limit: '1' });
+        return this.request<PaginatedResponse<Contact>>(
+            `/api/workspaces/${this.workspaceId}/contacts?${queryParams.toString()}`
+        );
+    }
+
+    /**
+     * Get activity timeline for a contact
+     */
+    async getContactActivity(
+        contactId: string,
+        params?: {
+            page?: number;
+            limit?: number;
+            type?: string;
+            startDate?: string;
+            endDate?: string;
+        }
+    ): Promise<ApiResponse<PaginatedResponse<Activity>>> {
+        this.validateRequired('contactId', contactId, 'getContactActivity');
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.set('page', params.page.toString());
+        if (params?.limit) queryParams.set('limit', params.limit.toString());
+        if (params?.type) queryParams.set('type', params.type);
+        if (params?.startDate) queryParams.set('startDate', params.startDate);
+        if (params?.endDate) queryParams.set('endDate', params.endDate);
+
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts/${contactId}/activities${query ? `?${query}` : ''}`;
+
+        return this.request<PaginatedResponse<Activity>>(endpoint);
+    }
+
+    /**
+     * Get engagement metrics for a contact (via their linked visitor data)
+     */
+    async getContactEngagement(contactId: string): Promise<ApiResponse<{
+        totalTimeOnSiteSeconds: number;
+        averageSessionDurationSeconds: number;
+        totalPageViews: number;
+        totalSessions: number;
+        engagementScore: number;
+        lastActiveAt: string;
+    }>> {
+        this.validateRequired('contactId', contactId, 'getContactEngagement');
+        return this.request(
+            `/api/workspaces/${this.workspaceId}/contacts/${contactId}/engagement`
+        );
+    }
+
+    /**
+     * Get a full timeline for a contact including events, activities, and opportunities
+     */
+    async getContactTimeline(
+        contactId: string,
+        params?: {
+            page?: number;
+            limit?: number;
+        }
+    ): Promise<ApiResponse<PaginatedResponse<{
+        type: 'event' | 'activity' | 'opportunity' | 'note';
+        title: string;
+        description?: string;
+        timestamp: string;
+        metadata?: Record<string, unknown>;
+    }>>> {
+        this.validateRequired('contactId', contactId, 'getContactTimeline');
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.set('page', params.page.toString());
+        if (params?.limit) queryParams.set('limit', params.limit.toString());
+
+        const query = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts/${contactId}/timeline${query ? `?${query}` : ''}`;
+
+        return this.request(endpoint);
+    }
+
+    /**
+     * Search contacts with advanced filters
+     */
+    async searchContacts(query: string, filters?: {
+        status?: string;
+        lifecycleStage?: string;
+        source?: string;
+        tags?: string[];
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<Contact>>> {
+        const queryParams = new URLSearchParams();
+        queryParams.set('search', query);
+        if (filters?.status) queryParams.set('status', filters.status);
+        if (filters?.lifecycleStage) queryParams.set('lifecycleStage', filters.lifecycleStage);
+        if (filters?.source) queryParams.set('source', filters.source);
+        if (filters?.tags) queryParams.set('tags', filters.tags.join(','));
+        if (filters?.page) queryParams.set('page', filters.page.toString());
+        if (filters?.limit) queryParams.set('limit', filters.limit.toString());
+
+        const qs = queryParams.toString();
+        const endpoint = `/api/workspaces/${this.workspaceId}/contacts${qs ? `?${qs}` : ''}`;
+
+        return this.request<PaginatedResponse<Contact>>(endpoint);
+    }
+
+    // ============================================
+    // WEBHOOK MANAGEMENT API
+    // ============================================
+
+    /**
+     * List all webhook subscriptions
+     */
+    async listWebhooks(params?: {
+        page?: number;
+        limit?: number;
+    }): Promise<ApiResponse<PaginatedResponse<{
+        _id: string;
+        url: string;
+        events: string[];
+        isActive: boolean;
+        createdAt: string;
+    }>>> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.set('page', params.page.toString());
+        if (params?.limit) queryParams.set('limit', params.limit.toString());
+
+        const query = queryParams.toString();
+        return this.request(
+            `/api/workspaces/${this.workspaceId}/webhooks${query ? `?${query}` : ''}`
+        );
+    }
+
+    /**
+     * Create a new webhook subscription
+     */
+    async createWebhook(data: {
+        url: string;
+        events: string[];
+        secret?: string;
+    }): Promise<ApiResponse<{
+        _id: string;
+        url: string;
+        events: string[];
+        isActive: boolean;
+    }>> {
+        return this.request(
+            `/api/workspaces/${this.workspaceId}/webhooks`,
+            {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }
+        );
+    }
+
+    /**
+     * Delete a webhook subscription
+     */
+    async deleteWebhook(webhookId: string): Promise<ApiResponse<void>> {
+        this.validateRequired('webhookId', webhookId, 'deleteWebhook');
+        return this.request<void>(
+            `/api/workspaces/${this.workspaceId}/webhooks/${webhookId}`,
+            {
+                method: 'DELETE',
+            }
+        );
+    }
+
+    // ============================================
     // EVENT TRIGGERS API (delegated to triggers manager)
     // ============================================
 

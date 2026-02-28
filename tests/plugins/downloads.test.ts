@@ -64,9 +64,8 @@ describe('DownloadsPlugin', () => {
 
         it('should setup SPA navigation reset', () => {
             plugin.init(mockTracker);
-            // History API should be intercepted
-            expect(window.history.pushState).not.toBe(originalPushState);
-            expect(window.history.replaceState).not.toBe(originalReplaceState);
+            // Plugin listens for clianta:navigation custom event
+            expect(window.addEventListener).toHaveBeenCalledWith('clianta:navigation', expect.any(Function));
         });
 
         it('should register popstate handler', () => {
@@ -173,7 +172,7 @@ describe('DownloadsPlugin', () => {
             plugin.init(mockTracker);
         });
 
-        it('should reset tracking on pushState navigation', () => {
+        it('should reset tracking on navigation event', () => {
             // Track a download
             const link = document.createElement('a');
             link.href = 'https://example.com/file.pdf';
@@ -181,8 +180,8 @@ describe('DownloadsPlugin', () => {
             link.click();
             expect(mockTracker.track).toHaveBeenCalledTimes(1);
 
-            // Navigate (resets tracking)
-            window.history.pushState({}, '', '/new-page');
+            // Dispatch navigation event (resets tracking)
+            window.dispatchEvent(new Event('clianta:navigation'));
 
             // Same download should be tracked again
             link.click();

@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useEffect, createContext, useContext, useRef, type ReactNode } from 'react';
+import { useEffect, useState, createContext, useContext, useRef, type ReactNode } from 'react';
 import { clianta } from './index';
 import type { CliantaConfig, TrackerCore } from './types';
 
@@ -45,7 +45,9 @@ export interface CliantaProviderProps {
  * </CliantaProvider>
  */
 export function CliantaProvider({ config, children }: CliantaProviderProps) {
-    const trackerRef = useRef<TrackerCore | null>(null);
+    const [tracker, setTracker] = useState<TrackerCore | null>(null);
+    // Stable ref to projectId — the only value that truly identifies the tracker
+    const projectIdRef = useRef(config.projectId);
 
     useEffect(() => {
         // Initialize tracker with config
@@ -55,18 +57,25 @@ export function CliantaProvider({ config, children }: CliantaProviderProps) {
             return;
         }
 
+        // Only re-initialize if projectId actually changed
+        if (projectIdRef.current !== projectId) {
+            projectIdRef.current = projectId;
+        }
+
         // Extract projectId (handled separately) and pass rest as options
         const { projectId: _, ...options } = config;
-        trackerRef.current = clianta(projectId, options);
+        const instance = clianta(projectId, options);
+        setTracker(instance);
 
         // Cleanup: flush pending events on unmount
         return () => {
-            trackerRef.current?.flush();
+            instance?.flush();
         };
-    }, [config]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [config.projectId]);
 
     return (
-        <CliantaContext.Provider value={trackerRef.current}>
+        <CliantaContext.Provider value={tracker}>
             {children}
         </CliantaContext.Provider>
     );
