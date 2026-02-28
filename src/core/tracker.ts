@@ -25,6 +25,7 @@ import { logger } from './logger';
 import { getPlugin } from '../plugins';
 import { ConsentManager } from '../consent';
 import { CRMClient, type InboundEventPayload, type InboundEventResult } from './crm';
+import { VisitorClient } from './visitorClient';
 import {
     getOrCreateVisitorId,
     getOrCreateSessionId,
@@ -56,6 +57,8 @@ export class Tracker implements TrackerCore {
     private pendingIdentify: { email: string; traits: UserTraits } | null = null;
     /** Registered event schemas for validation */
     private eventSchemas: Map<string, Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>> = new Map();
+    /** Visitor API client (standalone, also accessible via tracker.visitor) */
+    public visitor!: VisitorClient;
 
     constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
         if (!workspaceId) {
@@ -89,6 +92,9 @@ export class Tracker implements TrackerCore {
         this.sessionId = this.createSessionId();
 
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
+
+        // Initialize visitor API client
+        this.visitor = new VisitorClient(this.transport, this.workspaceId, this.visitorId);
 
         // Security warnings
         if (this.config.apiEndpoint.startsWith('http://') &&
@@ -321,102 +327,40 @@ export class Tracker implements TrackerCore {
 
     /**
      * Get the current visitor's profile from the CRM.
-     * Returns visitor data and linked contact info if identified.
-     * Only returns data for the current visitor (privacy-safe for frontend).
+     * @deprecated Use `tracker.visitor.getProfile()` instead.
      */
     async getVisitorProfile(): Promise<import('../types').VisitorProfile | null> {
-        if (!this.isInitialized) {
-            logger.warn('SDK not initialized');
-            return null;
-        }
-
-        const result = await this.transport.fetchData<import('../types').VisitorProfile>(
-            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/profile`
-        );
-
-        if (result.success && result.data) {
-            logger.debug('Visitor profile fetched:', result.data);
-            return result.data;
-        }
-
-        logger.warn('Failed to fetch visitor profile:', result.error);
-        return null;
+        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
+        return this.visitor.getProfile();
     }
 
     /**
      * Get the current visitor's recent activity/events.
-     * Returns paginated list of tracking events for this visitor.
+     * @deprecated Use `tracker.visitor.getActivity()` instead.
      */
     async getVisitorActivity(
         options?: import('../types').VisitorActivityOptions
     ): Promise<{ data: import('../types').VisitorActivity[]; pagination: { page: number; limit: number; total: number; pages: number } } | null> {
-        if (!this.isInitialized) {
-            logger.warn('SDK not initialized');
-            return null;
-        }
-
-        const params: Record<string, string> = {};
-        if (options?.page) params.page = options.page.toString();
-        if (options?.limit) params.limit = options.limit.toString();
-        if (options?.eventType) params.eventType = options.eventType;
-        if (options?.startDate) params.startDate = options.startDate;
-        if (options?.endDate) params.endDate = options.endDate;
-
-        const result = await this.transport.fetchData<any>(
-            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/activity`,
-            params
-        );
-
-        if (result.success && result.data) {
-            return result.data;
-        }
-
-        logger.warn('Failed to fetch visitor activity:', result.error);
-        return null;
+        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
+        return this.visitor.getActivity(options);
     }
 
     /**
      * Get a summarized journey timeline for the current visitor.
-     * Includes top pages, sessions, time spent, and recent activities.
+     * @deprecated Use `tracker.visitor.getTimeline()` instead.
      */
     async getVisitorTimeline(): Promise<import('../types').VisitorTimeline | null> {
-        if (!this.isInitialized) {
-            logger.warn('SDK not initialized');
-            return null;
-        }
-
-        const result = await this.transport.fetchData<import('../types').VisitorTimeline>(
-            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/timeline`
-        );
-
-        if (result.success && result.data) {
-            return result.data;
-        }
-
-        logger.warn('Failed to fetch visitor timeline:', result.error);
-        return null;
+        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
+        return this.visitor.getTimeline();
     }
 
     /**
      * Get engagement metrics for the current visitor.
-     * Includes time on site, page views, bounce rate, and engagement score.
+     * @deprecated Use `tracker.visitor.getEngagement()` instead.
      */
     async getVisitorEngagement(): Promise<import('../types').EngagementMetrics | null> {
-        if (!this.isInitialized) {
-            logger.warn('SDK not initialized');
-            return null;
-        }
-
-        const result = await this.transport.fetchData<import('../types').EngagementMetrics>(
-            `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/engagement`
-        );
-
-        if (result.success && result.data) {
-            return result.data;
-        }
-
-        logger.warn('Failed to fetch visitor engagement:', result.error);
-        return null;
+        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
+        return this.visitor.getEngagement();
     }
 
     /**
@@ -475,7 +419,7 @@ export class Tracker implements TrackerCore {
      */
     private validateEventSchema(eventType: string, properties: Record<string, unknown>): void {
         if (!this.config.debug) return;
-        
+
         const schema = this.eventSchemas.get(eventType);
         if (!schema) return;
 
