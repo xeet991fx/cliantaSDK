@@ -139,6 +139,16 @@ interface TrackerCore {
     getVisitorEngagement(): Promise<EngagementMetrics | null>;
     /** Send a server-side inbound event (requires apiKey in config) */
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
+    /** Create or update a contact by email (upsert) */
+    createContact(data: PublicContactData): Promise<PublicCrmResult>;
+    /** Update an existing contact by ID (limited fields) */
+    updateContact(contactId: string, data: PublicContactUpdate): Promise<PublicCrmResult>;
+    /** Submit a form — creates/updates contact from form data */
+    submitForm(formId: string, data: PublicFormSubmission): Promise<PublicCrmResult>;
+    /** Log an activity linked to a contact (append-only) */
+    logActivity(data: PublicActivityData): Promise<PublicCrmResult>;
+    /** Create an opportunity (e.g., from "Request Demo" forms) */
+    createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
 }
 interface VisitorProfile {
     visitorId: string;
@@ -210,6 +220,62 @@ interface VisitorActivityOptions {
     startDate?: string;
     endDate?: string;
 }
+interface PublicContactData {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    source?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+interface PublicContactUpdate {
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+interface PublicActivityData {
+    contactId: string;
+    type: 'call' | 'email' | 'meeting' | 'note' | 'other';
+    title: string;
+    description?: string;
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    emailSubject?: string;
+    metadata?: Record<string, unknown>;
+}
+interface PublicOpportunityData {
+    title: string;
+    contactId: string;
+    pipelineId: string;
+    stageId: string;
+    value?: number;
+    currency?: string;
+    description?: string;
+    expectedCloseDate?: string;
+    customFields?: Record<string, unknown>;
+}
+interface PublicFormSubmission {
+    fields: Record<string, unknown>;
+    metadata?: {
+        visitorId?: string;
+        sessionId?: string;
+        pageUrl?: string;
+        referrer?: string;
+    };
+}
+interface PublicCrmResult {
+    success: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+    status?: number;
+}
 
 /**
  * Clianta SDK - Vue 3 Integration
@@ -233,7 +299,7 @@ interface CliantaPluginOptions extends CliantaConfig {
  * const app = createApp(App);
  * app.use(CliantaPlugin, {
  *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
+ *   apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   debug: import.meta.env.DEV,
  * });
  * app.mount('#app');

@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.5.0
+ * Clianta SDK v1.5.1
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -12,15 +12,22 @@ import { createContext, useState, useRef, useEffect, useContext } from 'react';
  */
 /** SDK Version */
 const SDK_VERSION = '1.4.0';
-/** Default API endpoint based on environment */
+/** Default API endpoint — reads from env or falls back to localhost */
 const getDefaultApiEndpoint = () => {
-    if (typeof window === 'undefined')
-        return 'https://api.clianta.online';
-    const hostname = window.location.hostname;
-    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-        return 'http://localhost:5000';
+    // Build-time env var (works with Next.js, Vite, CRA, etc.)
+    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CLIANTA_API_ENDPOINT) {
+        return process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT;
     }
-    return 'https://api.clianta.online';
+    if (typeof process !== 'undefined' && process.env?.VITE_CLIANTA_API_ENDPOINT) {
+        return process.env.VITE_CLIANTA_API_ENDPOINT;
+    }
+    if (typeof process !== 'undefined' && process.env?.REACT_APP_CLIANTA_API_ENDPOINT) {
+        return process.env.REACT_APP_CLIANTA_API_ENDPOINT;
+    }
+    if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
+        return process.env.CLIANTA_API_ENDPOINT;
+    }
+    return 'http://localhost:5000';
 };
 /** Core plugins enabled by default */
 const DEFAULT_PLUGINS = [
@@ -1782,7 +1789,7 @@ class PopupFormsPlugin extends BasePlugin {
             return;
         const config = this.tracker.getConfig();
         const workspaceId = this.tracker.getWorkspaceId();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
         try {
             const url = encodeURIComponent(window.location.href);
             const response = await fetch(`${apiEndpoint}/api/public/lead-forms/${workspaceId}?url=${url}`);
@@ -1887,7 +1894,7 @@ class PopupFormsPlugin extends BasePlugin {
         if (!this.tracker)
             return;
         const config = this.tracker.getConfig();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
         try {
             await fetch(`${apiEndpoint}/api/public/lead-forms/${formId}/view`, {
                 method: 'POST',
@@ -2134,7 +2141,7 @@ class PopupFormsPlugin extends BasePlugin {
         if (!this.tracker)
             return;
         const config = this.tracker.getConfig();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
         const visitorId = this.tracker.getVisitorId();
         // Collect form data
         const formData = new FormData(formElement);
@@ -3029,7 +3036,7 @@ class CRMClient {
      * The contact is upserted in the CRM and matching workflow automations fire automatically.
      *
      * @example
-     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * const crm = new CRMClient('http://localhost:5000', 'WORKSPACE_ID');
      * crm.setApiKey('mm_live_...');
      *
      * await crm.sendEvent({
@@ -4169,6 +4176,86 @@ class Tracker {
         this.sessionId = this.createSessionId();
         logger.info('All user data deleted');
     }
+    // ============================================
+    // PUBLIC CRM METHODS (no API key required)
+    // ============================================
+    /**
+     * Create or update a contact by email (upsert).
+     * Secured by domain whitelist — no API key needed.
+     */
+    async createContact(data) {
+        return this.publicCrmRequest('/api/public/crm/contacts', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+    /**
+     * Update an existing contact by ID (limited fields only).
+     */
+    async updateContact(contactId, data) {
+        return this.publicCrmRequest(`/api/public/crm/contacts/${contactId}`, 'PUT', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+    /**
+     * Submit a form — creates/updates contact from form data.
+     */
+    async submitForm(formId, data) {
+        const payload = {
+            ...data,
+            metadata: {
+                ...data.metadata,
+                visitorId: this.visitorId,
+                sessionId: this.sessionId,
+                pageUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+                referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
+            },
+        };
+        return this.publicCrmRequest(`/api/public/crm/forms/${formId}/submit`, 'POST', payload);
+    }
+    /**
+     * Log an activity linked to a contact (append-only).
+     */
+    async logActivity(data) {
+        return this.publicCrmRequest('/api/public/crm/activities', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+    /**
+     * Create an opportunity (e.g., from "Request Demo" forms).
+     */
+    async createOpportunity(data) {
+        return this.publicCrmRequest('/api/public/crm/opportunities', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+    /**
+     * Internal helper for public CRM API calls.
+     */
+    async publicCrmRequest(path, method, body) {
+        const url = `${this.config.apiEndpoint}${path}`;
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (response.ok) {
+                logger.debug(`Public CRM ${method} ${path} succeeded`);
+                return { success: true, data: data.data ?? data, status: response.status };
+            }
+            logger.error(`Public CRM ${method} ${path} failed (${response.status}):`, data.message);
+            return { success: false, error: data.message, status: response.status };
+        }
+        catch (error) {
+            logger.error(`Public CRM ${method} ${path} error:`, error);
+            return { success: false, error: error.message };
+        }
+    }
     /**
      * Destroy tracker and cleanup
      */
@@ -4262,7 +4349,7 @@ const CliantaContext = createContext(null);
  *
  * const config: CliantaConfig = {
  *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
+ *   apiEndpoint: process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   debug: process.env.NODE_ENV === 'development',
  * };
  *

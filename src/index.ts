@@ -46,6 +46,12 @@ export type {
     EngagementMetrics,
     VisitorActivityOptions,
     ContactTimelineOptions,
+    PublicContactData,
+    PublicContactUpdate,
+    PublicActivityData,
+    PublicOpportunityData,
+    PublicFormSubmission,
+    PublicCrmResult,
 } from './types';
 
 // Export consent types

@@ -210,11 +210,20 @@ console.log('Engagement score:', engagement?.engagementScore);
 
 ### Server-Side (Full Access via API Key)
 
+```bash
+# .env (add to .gitignore!)
+CLIANTA_API_KEY=ck_prod_your_api_key_here
+CLIANTA_WORKSPACE_ID=your-workspace-id
+```
+
 ```typescript
 import { CRMClient } from '@clianta/sdk';
 
-const crm = new CRMClient('https://api.clianta.online', 'workspace-id');
-crm.setApiKey('mm_live_xxxxx');
+const crm = new CRMClient(
+  'https://api.clianta.online',
+  process.env.CLIANTA_WORKSPACE_ID!,
+  { apiKey: process.env.CLIANTA_API_KEY }
+);
 
 // Look up contact by email
 const contact = await crm.getContactByEmail('user@example.com');
@@ -225,6 +234,8 @@ const engagement = await crm.getContactEngagement(contact.data._id);
 // Search contacts
 const results = await crm.searchContacts('john', { status: 'lead' });
 ```
+
+> ⚠️ **Security:** API keys are for server-side only. Never expose them in browser JavaScript. Client-side tracking uses your Project ID + domain whitelist — no key needed.
 
 ---
 

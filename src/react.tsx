@@ -30,7 +30,7 @@ export interface CliantaProviderProps {
  * 
  * const config: CliantaConfig = {
  *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
+ *   apiEndpoint: process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   debug: process.env.NODE_ENV === 'development',
  * };
  * 

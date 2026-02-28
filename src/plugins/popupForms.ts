@@ -116,7 +116,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
         const config = this.tracker.getConfig();
         const workspaceId = this.tracker.getWorkspaceId();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
 
         try {
             const url = encodeURIComponent(window.location.href);
@@ -236,7 +236,7 @@ export class PopupFormsPlugin extends BasePlugin {
         if (!this.tracker) return;
 
         const config = this.tracker.getConfig();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
 
         try {
             await fetch(`${apiEndpoint}/api/public/lead-forms/${formId}/view`, {
@@ -508,7 +508,7 @@ export class PopupFormsPlugin extends BasePlugin {
         if (!this.tracker) return;
 
         const config = this.tracker.getConfig();
-        const apiEndpoint = config.apiEndpoint || 'https://api.clianta.online';
+        const apiEndpoint = config.apiEndpoint || 'http://localhost:5000';
         const visitorId = this.tracker.getVisitorId();
 
         // Collect form data

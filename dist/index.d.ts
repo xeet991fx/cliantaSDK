@@ -225,7 +225,7 @@ declare class CRMClient {
      * The contact is upserted in the CRM and matching workflow automations fire automatically.
      *
      * @example
-     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * const crm = new CRMClient('http://localhost:5000', 'WORKSPACE_ID');
      * crm.setApiKey('mm_live_...');
      *
      * await crm.sendEvent({
@@ -731,6 +731,16 @@ interface TrackerCore {
     getVisitorEngagement(): Promise<EngagementMetrics | null>;
     /** Send a server-side inbound event (requires apiKey in config) */
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
+    /** Create or update a contact by email (upsert) */
+    createContact(data: PublicContactData): Promise<PublicCrmResult>;
+    /** Update an existing contact by ID (limited fields) */
+    updateContact(contactId: string, data: PublicContactUpdate): Promise<PublicCrmResult>;
+    /** Submit a form — creates/updates contact from form data */
+    submitForm(formId: string, data: PublicFormSubmission): Promise<PublicCrmResult>;
+    /** Log an activity linked to a contact (append-only) */
+    logActivity(data: PublicActivityData): Promise<PublicCrmResult>;
+    /** Create an opportunity (e.g., from "Request Demo" forms) */
+    createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
 }
 interface Contact {
     _id?: string;
@@ -1067,6 +1077,62 @@ interface ContactTimelineOptions {
     includeActivities?: boolean;
     includeOpportunities?: boolean;
 }
+interface PublicContactData {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    source?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+interface PublicContactUpdate {
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+interface PublicActivityData {
+    contactId: string;
+    type: 'call' | 'email' | 'meeting' | 'note' | 'other';
+    title: string;
+    description?: string;
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    emailSubject?: string;
+    metadata?: Record<string, unknown>;
+}
+interface PublicOpportunityData {
+    title: string;
+    contactId: string;
+    pipelineId: string;
+    stageId: string;
+    value?: number;
+    currency?: string;
+    description?: string;
+    expectedCloseDate?: string;
+    customFields?: Record<string, unknown>;
+}
+interface PublicFormSubmission {
+    fields: Record<string, unknown>;
+    metadata?: {
+        visitorId?: string;
+        sessionId?: string;
+        pageUrl?: string;
+        referrer?: string;
+    };
+}
+interface PublicCrmResult {
+    success: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+    status?: number;
+}
 
 /**
  * Main Clianta Tracker Class
@@ -1214,6 +1280,31 @@ declare class Tracker implements TrackerCore {
      */
     deleteData(): void;
     /**
+     * Create or update a contact by email (upsert).
+     * Secured by domain whitelist — no API key needed.
+     */
+    createContact(data: PublicContactData): Promise<PublicCrmResult>;
+    /**
+     * Update an existing contact by ID (limited fields only).
+     */
+    updateContact(contactId: string, data: PublicContactUpdate): Promise<PublicCrmResult>;
+    /**
+     * Submit a form — creates/updates contact from form data.
+     */
+    submitForm(formId: string, data: PublicFormSubmission): Promise<PublicCrmResult>;
+    /**
+     * Log an activity linked to a contact (append-only).
+     */
+    logActivity(data: PublicActivityData): Promise<PublicCrmResult>;
+    /**
+     * Create an opportunity (e.g., from "Request Demo" forms).
+     */
+    createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
+    /**
+     * Internal helper for public CRM API calls.
+     */
+    private publicCrmRequest;
+    /**
      * Destroy tracker and cleanup
      */
     destroy(): Promise<void>;
@@ -1350,4 +1441,4 @@ declare const SDK_VERSION = "1.4.0";
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
 export { CRMClient, ConsentManager, EventTriggersManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactTimelineOptions, ContactUpdateAction, EmailAction, EmailTemplate, EngagementMetrics, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, VisitorActivity, VisitorActivityOptions, VisitorProfile, VisitorTimeline, WebhookAction };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactTimelineOptions, ContactUpdateAction, EmailAction, EmailTemplate, EngagementMetrics, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, PublicActivityData, PublicContactData, PublicContactUpdate, PublicCrmResult, PublicFormSubmission, PublicOpportunityData, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, VisitorActivity, VisitorActivityOptions, VisitorProfile, VisitorTimeline, WebhookAction };

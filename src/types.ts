@@ -264,6 +264,23 @@ export interface TrackerCore {
 
     /** Send a server-side inbound event (requires apiKey in config) */
     sendEvent(payload: import('./core/crm').InboundEventPayload): Promise<import('./core/crm').InboundEventResult>;
+
+    // Public CRM methods (no API key required, secured by domain whitelist)
+
+    /** Create or update a contact by email (upsert) */
+    createContact(data: PublicContactData): Promise<PublicCrmResult>;
+
+    /** Update an existing contact by ID (limited fields) */
+    updateContact(contactId: string, data: PublicContactUpdate): Promise<PublicCrmResult>;
+
+    /** Submit a form — creates/updates contact from form data */
+    submitForm(formId: string, data: PublicFormSubmission): Promise<PublicCrmResult>;
+
+    /** Log an activity linked to a contact (append-only) */
+    logActivity(data: PublicActivityData): Promise<PublicCrmResult>;
+
+    /** Create an opportunity (e.g., from "Request Demo" forms) */
+    createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
 }
 
 // ============================================
@@ -685,4 +702,70 @@ export interface ContactTimelineOptions {
     includeEvents?: boolean;
     includeActivities?: boolean;
     includeOpportunities?: boolean;
+}
+
+// ============================================
+// PUBLIC CRM TYPES (Frontend-safe, no API key)
+// ============================================
+
+export interface PublicContactData {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    source?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+
+export interface PublicContactUpdate {
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    jobTitle?: string;
+    phone?: string;
+    tags?: string[];
+    customFields?: Record<string, unknown>;
+}
+
+export interface PublicActivityData {
+    contactId: string;
+    type: 'call' | 'email' | 'meeting' | 'note' | 'other';
+    title: string;
+    description?: string;
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    emailSubject?: string;
+    metadata?: Record<string, unknown>;
+}
+
+export interface PublicOpportunityData {
+    title: string;
+    contactId: string;
+    pipelineId: string;
+    stageId: string;
+    value?: number;
+    currency?: string;
+    description?: string;
+    expectedCloseDate?: string;
+    customFields?: Record<string, unknown>;
+}
+
+export interface PublicFormSubmission {
+    fields: Record<string, unknown>;
+    metadata?: {
+        visitorId?: string;
+        sessionId?: string;
+        pageUrl?: string;
+        referrer?: string;
+    };
+}
+
+export interface PublicCrmResult {
+    success: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+    status?: number;
 }

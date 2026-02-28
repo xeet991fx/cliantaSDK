@@ -11,6 +11,12 @@ import type {
     UserTraits,
     ConsentState,
     Plugin,
+    PublicContactData,
+    PublicContactUpdate,
+    PublicActivityData,
+    PublicOpportunityData,
+    PublicFormSubmission,
+    PublicCrmResult,
 } from '../types';
 import { mergeConfig, SDK_VERSION, STORAGE_KEYS } from './config';
 import { Transport } from './transport';
@@ -587,6 +593,92 @@ export class Tracker implements TrackerCore {
         this.sessionId = this.createSessionId();
 
         logger.info('All user data deleted');
+    }
+
+    // ============================================
+    // PUBLIC CRM METHODS (no API key required)
+    // ============================================
+
+    /**
+     * Create or update a contact by email (upsert).
+     * Secured by domain whitelist — no API key needed.
+     */
+    async createContact(data: PublicContactData): Promise<PublicCrmResult> {
+        return this.publicCrmRequest('/api/public/crm/contacts', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+
+    /**
+     * Update an existing contact by ID (limited fields only).
+     */
+    async updateContact(contactId: string, data: PublicContactUpdate): Promise<PublicCrmResult> {
+        return this.publicCrmRequest(`/api/public/crm/contacts/${contactId}`, 'PUT', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+
+    /**
+     * Submit a form — creates/updates contact from form data.
+     */
+    async submitForm(formId: string, data: PublicFormSubmission): Promise<PublicCrmResult> {
+        const payload = {
+            ...data,
+            metadata: {
+                ...data.metadata,
+                visitorId: this.visitorId,
+                sessionId: this.sessionId,
+                pageUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+                referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
+            },
+        };
+        return this.publicCrmRequest(`/api/public/crm/forms/${formId}/submit`, 'POST', payload);
+    }
+
+    /**
+     * Log an activity linked to a contact (append-only).
+     */
+    async logActivity(data: PublicActivityData): Promise<PublicCrmResult> {
+        return this.publicCrmRequest('/api/public/crm/activities', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+
+    /**
+     * Create an opportunity (e.g., from "Request Demo" forms).
+     */
+    async createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult> {
+        return this.publicCrmRequest('/api/public/crm/opportunities', 'POST', {
+            workspaceId: this.workspaceId,
+            ...data,
+        });
+    }
+
+    /**
+     * Internal helper for public CRM API calls.
+     */
+    private async publicCrmRequest(path: string, method: string, body: unknown): Promise<PublicCrmResult> {
+        const url = `${this.config.apiEndpoint}${path}`;
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (response.ok) {
+                logger.debug(`Public CRM ${method} ${path} succeeded`);
+                return { success: true, data: data.data ?? data, status: response.status };
+            }
+            logger.error(`Public CRM ${method} ${path} failed (${response.status}):`, data.message);
+            return { success: false, error: data.message, status: response.status };
+        } catch (error) {
+            logger.error(`Public CRM ${method} ${path} error:`, error);
+            return { success: false, error: (error as Error).message };
+        }
     }
 
     /**

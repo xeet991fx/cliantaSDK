@@ -158,7 +158,7 @@ export class CRMClient {
      * The contact is upserted in the CRM and matching workflow automations fire automatically.
      *
      * @example
-     * const crm = new CRMClient('https://api.clianta.online', 'WORKSPACE_ID');
+     * const crm = new CRMClient('http://localhost:5000', 'WORKSPACE_ID');
      * crm.setApiKey('mm_live_...');
      *
      * await crm.sendEvent({

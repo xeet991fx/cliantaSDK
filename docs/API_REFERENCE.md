@@ -75,8 +75,16 @@ Toggle debug mode.
 ### Initialization
 ```typescript
 import { CRMClient } from '@clianta/sdk';
-const crm = new CRMClient(apiEndpoint, workspaceId, authToken?, apiKey?);
+
+// Recommended: use env vars for API key (never hardcode)
+const crm = new CRMClient(
+  process.env.CLIANTA_API_ENDPOINT!,
+  process.env.CLIANTA_WORKSPACE_ID!,
+  { apiKey: process.env.CLIANTA_API_KEY }
+);
 ```
+
+> ⚠️ **Server-side only.** API keys must never be exposed in browser code.
 
 ### Contacts
 - `crm.getContacts(params?)` — List contacts (paginated)

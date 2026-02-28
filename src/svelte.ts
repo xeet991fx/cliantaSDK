@@ -12,7 +12,7 @@
  *
  *   const cliantaStore = initClianta({
  *     projectId: 'your-project-id',
- *     apiEndpoint: 'https://api.clianta.online',
+ *     apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   });
  *
  *   setContext('clianta', cliantaStore);

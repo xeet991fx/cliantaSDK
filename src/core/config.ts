@@ -8,15 +8,22 @@ import type { CliantaConfig, PluginName } from '../types';
 /** SDK Version */
 export const SDK_VERSION = '1.4.0';
 
-/** Default API endpoint based on environment */
+/** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
-    if (typeof window === 'undefined') return 'https://api.clianta.online';
-
-    const hostname = window.location.hostname;
-    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-        return 'http://localhost:5000';
+    // Build-time env var (works with Next.js, Vite, CRA, etc.)
+    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CLIANTA_API_ENDPOINT) {
+        return process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT;
     }
-    return 'https://api.clianta.online';
+    if (typeof process !== 'undefined' && process.env?.VITE_CLIANTA_API_ENDPOINT) {
+        return process.env.VITE_CLIANTA_API_ENDPOINT;
+    }
+    if (typeof process !== 'undefined' && process.env?.REACT_APP_CLIANTA_API_ENDPOINT) {
+        return process.env.REACT_APP_CLIANTA_API_ENDPOINT;
+    }
+    if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
+        return process.env.CLIANTA_API_ENDPOINT;
+    }
+    return 'http://localhost:5000';
 };
 
 /** All available plugins */

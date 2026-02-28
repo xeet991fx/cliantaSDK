@@ -5,6 +5,22 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-02-28
+
+### Added
+- **Public CRM API** — Frontend-safe CRM methods that don't require an API key (secured by domain whitelist):
+  - `createContact()` — Create or upsert a contact by email
+  - `updateContact()` — Update an existing contact by ID
+  - `submitForm()` — Submit a form and auto-create/update contact
+  - `logActivity()` — Append an activity to a contact
+  - `createOpportunity()` — Create an opportunity (e.g., from "Request Demo" forms)
+- **Public CRM types** — `PublicContactData`, `PublicContactUpdate`, `PublicFormSubmission`, `PublicActivityData`, `PublicOpportunityData`, `PublicCrmResult`
+- **Updated docs** — API Reference and Getting Started guides updated with public CRM usage
+
+### Changed
+- Config: improved `getDefaultApiEndpoint()` with env variable support
+- Framework integrations: minor fixes for Angular, Svelte, Vue, React
+
 ## [1.5.0] - 2026-02-28
 
 ### Security

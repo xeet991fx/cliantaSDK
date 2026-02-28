@@ -62,7 +62,7 @@ export interface CliantaAngularConfig extends CliantaConfig {
  * @example
  * const instance = createCliantaTracker({
  *   projectId: 'your-project-id',
- *   apiEndpoint: 'https://api.clianta.online',
+ *   apiEndpoint: environment.cliantaApiEndpoint || 'http://localhost:5000',
  * });
  *
  * instance.tracker?.track('page_view', 'Home Page');
