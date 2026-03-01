@@ -16,19 +16,22 @@
 npm install @clianta/sdk
 ```
 
-### 2. Configure Environment
+### 2. Integrate
 
-Add your Project ID and API Endpoint (found in **Settings → Developer** in your Clianta dashboard):
+Pick your framework below. Each section includes the correct env vars and file paths for that framework.
+
+---
+
+#### Next.js (App Router)
+
+**Environment Variables** — set in `.env` or your hosting dashboard (Vercel, Netlify, etc.):
 
 ```bash
-# .env.local (Next.js) or .env (Vite/Vue)
 NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
 NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
-### 3. Integrate
-
-#### Next.js (App Router)
+**Integration** — wrap your app in `app/layout.tsx`:
 
 ```tsx
 // app/layout.tsx
@@ -47,11 +50,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-#### React (Vite / CRA)
+---
+
+#### React (Vite)
+
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — wrap your app in `src/main.tsx`:
 
 ```tsx
 // src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
 import { CliantaProvider } from '@clianta/sdk/react';
+import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -62,11 +79,24 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 ```
 
-#### Vue 3
+---
+
+#### Vue 3 (Vite)
+
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — register the plugin in `src/main.ts`:
 
 ```typescript
-// main.ts
+// src/main.ts
+import { createApp } from 'vue';
 import { CliantaPlugin } from '@clianta/sdk/vue';
+import App from './App.vue';
 
 const app = createApp(App);
 app.use(CliantaPlugin, {
@@ -75,10 +105,25 @@ app.use(CliantaPlugin, {
 app.mount('#app');
 ```
 
-#### Angular
+---
+
+#### Angular 16+
+
+**Environment Variables** — set in `src/environments/environment.ts`:
 
 ```typescript
-// clianta.service.ts
+// src/environments/environment.ts
+export const environment = {
+  production: false,
+  cliantaProjectId: 'your-project-id',
+  cliantaApiEndpoint: 'https://your-crm-backend.com',
+};
+```
+
+**Integration** — create a service at `src/app/clianta.service.ts`:
+
+```typescript
+// src/app/clianta.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
 import { createCliantaTracker, CliantaTrackerInstance } from '@clianta/sdk/angular';
 import { environment } from '../environments/environment';
@@ -108,17 +153,28 @@ export class CliantaService implements OnDestroy {
 }
 ```
 
+---
+
 #### Svelte / SvelteKit
 
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — initialize in `src/routes/+layout.svelte`:
+
 ```svelte
-<!-- +layout.svelte -->
+<!-- src/routes/+layout.svelte -->
 <script>
   import { initClianta } from '@clianta/sdk/svelte';
   import { setContext } from 'svelte';
 
   const clianta = initClianta({
-    projectId: 'YOUR_PROJECT_ID',
-    apiEndpoint: 'https://your-crm-backend.com',
+    projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
+    apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT,
   });
 
   setContext('clianta', clianta);

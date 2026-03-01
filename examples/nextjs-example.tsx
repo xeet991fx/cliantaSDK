@@ -290,7 +290,7 @@ export default function App({ Component, pageProps }: AppProps) {
 */
 
 // ============================================
-// ENVIRONMENT VARIABLES (.env.local)
+// ENVIRONMENT VARIABLES (.env)
 // ============================================
 
 /*

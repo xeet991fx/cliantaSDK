@@ -12,27 +12,22 @@ pnpm add @clianta/sdk
 
 ---
 
-## Environment Variables
+## Framework Integration
 
-The SDK auto-detects your CRM backend from environment variables. Add these to your project:
+Each framework has its own env vars, file paths, and entry points. Pick yours below.
 
-| Framework | File | Variables |
-|---|---|---|
-| Next.js | `.env.local` | `NEXT_PUBLIC_CLIANTA_PROJECT_ID`, `NEXT_PUBLIC_CLIANTA_API_ENDPOINT` |
-| Vite / Vue | `.env` | `VITE_CLIANTA_PROJECT_ID`, `VITE_CLIANTA_API_ENDPOINT` |
-| CRA | `.env` | `REACT_APP_CLIANTA_PROJECT_ID`, `REACT_APP_CLIANTA_API_ENDPOINT` |
+---
 
-Example `.env.local`:
+### Next.js (App Router)
+
+**Environment Variables** — set in `.env` or your hosting dashboard (Vercel, Netlify, etc.):
+
 ```bash
 NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
 NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
----
-
-## Framework Integration
-
-### React / Next.js
+**Integration** — wrap your app in `app/layout.tsx`:
 
 ```tsx
 // app/layout.tsx
@@ -50,9 +45,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 ```
+---
 
-Use in any component:
+### React (Vite)
+
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — wrap your app in `src/main.tsx`:
+
 ```tsx
+// src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { CliantaProvider } from '@clianta/sdk/react';
+import App from './App';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <CliantaProvider projectId={import.meta.env.VITE_CLIANTA_PROJECT_ID}>
+      <App />
+    </CliantaProvider>
+  </React.StrictMode>
+);
+```
+
+**Use in any component:**
+
+```tsx
+// src/components/MyComponent.tsx
 import { useClianta } from '@clianta/sdk/react';
 
 function MyComponent() {
@@ -66,10 +91,21 @@ function MyComponent() {
 }
 ```
 
-### Vue 3
+---
+
+### Vue 3 (Vite)
+
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — register the plugin in `src/main.ts`:
 
 ```typescript
-// main.ts
+// src/main.ts
 import { createApp } from 'vue';
 import { CliantaPlugin } from '@clianta/sdk/vue';
 import App from './App.vue';
@@ -81,7 +117,10 @@ app.use(CliantaPlugin, {
 app.mount('#app');
 ```
 
+**Use in any component:**
+
 ```vue
+<!-- src/components/MyComponent.vue -->
 <script setup>
 import { useCliantaTrack } from '@clianta/sdk/vue';
 
@@ -93,10 +132,25 @@ function handleClick() {
 </script>
 ```
 
+---
+
 ### Angular 16+
 
+**Environment Variables** — set in `src/environments/environment.ts`:
+
 ```typescript
-// clianta.service.ts
+// src/environments/environment.ts
+export const environment = {
+  production: false,
+  cliantaProjectId: 'your-project-id',
+  cliantaApiEndpoint: 'https://your-crm-backend.com',
+};
+```
+
+**Integration** — create a service at `src/app/clianta.service.ts`:
+
+```typescript
+// src/app/clianta.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
 import { createCliantaTracker, type CliantaTrackerInstance } from '@clianta/sdk/angular';
 import { environment } from '../environments/environment';
@@ -128,10 +182,21 @@ export class CliantaService implements OnDestroy {
 }
 ```
 
+---
+
 ### Svelte / SvelteKit
 
+**Environment Variables** — set in `.env` or your hosting dashboard:
+
+```bash
+VITE_CLIANTA_PROJECT_ID=your-project-id
+VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+**Integration** — initialize in `src/routes/+layout.svelte`:
+
 ```svelte
-<!-- +layout.svelte -->
+<!-- src/routes/+layout.svelte -->
 <script>
   import { initClianta } from '@clianta/sdk/svelte';
   import { setContext } from 'svelte';
@@ -147,8 +212,10 @@ export class CliantaService implements OnDestroy {
 <slot />
 ```
 
+**Use in any component:**
+
 ```svelte
-<!-- Component.svelte -->
+<!-- src/routes/dashboard/+page.svelte -->
 <script>
   import { getContext } from 'svelte';
   const clianta = getContext('clianta');
