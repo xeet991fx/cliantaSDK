@@ -1,48 +1,48 @@
-# Getting Started with Clianta SDK
+# Clianta SDK — Getting Started
 
 ## Installation
 
-### NPM / Yarn
 ```bash
 npm install @clianta/sdk
 # or
 yarn add @clianta/sdk
-```
-
-### Script Tag (HTML)
-```html
-<script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
+# or
+pnpm add @clianta/sdk
 ```
 
 ---
 
-## Framework Setup
+## Environment Variables
+
+The SDK auto-detects your CRM backend from environment variables. Add these to your project:
+
+| Framework | File | Variables |
+|---|---|---|
+| Next.js | `.env.local` | `NEXT_PUBLIC_CLIANTA_PROJECT_ID`, `NEXT_PUBLIC_CLIANTA_API_ENDPOINT` |
+| Vite / Vue | `.env` | `VITE_CLIANTA_PROJECT_ID`, `VITE_CLIANTA_API_ENDPOINT` |
+| CRA | `.env` | `REACT_APP_CLIANTA_PROJECT_ID`, `REACT_APP_CLIANTA_API_ENDPOINT` |
+
+Example `.env.local`:
+```bash
+NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
+NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+```
+
+---
+
+## Framework Integration
 
 ### React / Next.js
 
 ```tsx
-// clianta.config.ts
-import type { CliantaConfig } from '@clianta/sdk';
-
-const config: CliantaConfig = {
-  projectId: process.env.NEXT_PUBLIC_WORKSPACE_ID!,
-  apiEndpoint: process.env.NEXT_PUBLIC_API_ENDPOINT,
-  debug: process.env.NODE_ENV === 'development',
-};
-
-export default config;
-```
-
-```tsx
 // app/layout.tsx
 import { CliantaProvider } from '@clianta/sdk/react';
-import cliantaConfig from '../clianta.config';
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html>
+    <html lang="en">
       <body>
-        <CliantaProvider config={cliantaConfig}>
+        <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}>
           {children}
         </CliantaProvider>
       </body>
@@ -51,13 +51,13 @@ export default function RootLayout({ children }) {
 }
 ```
 
+Use in any component:
 ```tsx
-// In any component:
 import { useClianta } from '@clianta/sdk/react';
 
 function MyComponent() {
   const tracker = useClianta();
-  
+
   const handleClick = () => {
     tracker?.track('button_click', 'CTA Button', { page: 'home' });
   };
@@ -76,9 +76,7 @@ import App from './App.vue';
 
 const app = createApp(App);
 app.use(CliantaPlugin, {
-  projectId: import.meta.env.VITE_WORKSPACE_ID,
-  apiEndpoint: import.meta.env.VITE_API_ENDPOINT,
-  debug: import.meta.env.DEV,
+  projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
 });
 app.mount('#app');
 ```
@@ -111,7 +109,6 @@ export class CliantaService implements OnDestroy {
     this.instance = createCliantaTracker({
       projectId: environment.cliantaProjectId,
       apiEndpoint: environment.cliantaApiEndpoint,
-      debug: !environment.production,
     });
   }
 
@@ -140,8 +137,8 @@ export class CliantaService implements OnDestroy {
   import { setContext } from 'svelte';
 
   const clianta = initClianta({
-    projectId: import.meta.env.VITE_WORKSPACE_ID,
-    apiEndpoint: import.meta.env.VITE_API_ENDPOINT,
+    projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
+    apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT,
   });
 
   setContext('clianta', clianta);
@@ -164,83 +161,26 @@ export class CliantaService implements OnDestroy {
 <button on:click={handleClick}>Click Me</button>
 ```
 
-### Vanilla JavaScript
-
-```html
-<script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
-<script>
-  var tracker = clianta('YOUR_WORKSPACE_ID', {
-    apiEndpoint: 'https://api.clianta.online',
-  });
-
-  // Track events
-  tracker.track('button_click', 'CTA Clicked');
-
-  // Identify users
-  tracker.identify('user@example.com', { firstName: 'John' });
-</script>
-```
-
 ---
 
-## Reading Visitor Data Back
+## What Happens Automatically
 
-### Frontend (Own Visitor Only)
+Once integrated, the SDK automatically captures — no additional code needed:
 
-```typescript
-// Get current visitor's profile
-const profile = await tracker.getVisitorProfile();
-console.log(profile?.firstName, profile?.email, profile?.leadScore);
-
-// Get visitor's recent activity
-const activity = await tracker.getVisitorActivity({ limit: 10 });
-activity?.data.forEach(event => {
-  console.log(event.eventType, event.eventName, event.timestamp);
-});
-
-// Get visitor journey timeline
-const timeline = await tracker.getVisitorTimeline();
-console.log('Sessions:', timeline?.totalSessions);
-console.log('Time spent:', timeline?.totalTimeSpentSeconds, 'seconds');
-
-// Get engagement metrics
-const engagement = await tracker.getVisitorEngagement();
-console.log('Engagement score:', engagement?.engagementScore);
-```
-
-### Server-Side (Full Access via API Key)
-
-```bash
-# .env (add to .gitignore!)
-CLIANTA_API_KEY=ck_prod_your_api_key_here
-CLIANTA_WORKSPACE_ID=your-workspace-id
-```
-
-```typescript
-import { CRMClient } from '@clianta/sdk';
-
-const crm = new CRMClient(
-  'https://api.clianta.online',
-  process.env.CLIANTA_WORKSPACE_ID!,
-  { apiKey: process.env.CLIANTA_API_KEY }
-);
-
-// Look up contact by email
-const contact = await crm.getContactByEmail('user@example.com');
-
-// Get engagement data
-const engagement = await crm.getContactEngagement(contact.data._id);
-
-// Search contacts
-const results = await crm.searchContacts('john', { status: 'lead' });
-```
-
-> ⚠️ **Security:** API keys are for server-side only. Never expose them in browser JavaScript. Client-side tracking uses your Project ID + domain whitelist — no key needed.
+- **Page Views** — every page load + SPA route changes
+- **Form Submissions** — all forms auto-captured + auto-identify from email fields
+- **Scroll Depth** — 25%, 50%, 75%, 100% milestones
+- **Clicks** — buttons, CTAs, navigation links
+- **File Downloads** — PDF, ZIP, DOC, XLSX, CSV, etc.
+- **Engagement** — active time on page vs idle
+- **Exit Intent** — mouse leaving viewport
+- **JS Errors** — error message, stack trace, source
+- **Core Web Vitals** — LCP, FCP, CLS, TTFB
 
 ---
 
 ## Next Steps
 
-- [API Reference](./API_REFERENCE.md) — Full method reference
-- [Event Triggers](./EVENT_TRIGGERS.md) — Automation & workflows
+- [API Reference](./API_REFERENCE.md) — All SDK methods
+- [Event Triggers](./EVENT_TRIGGERS.md) — CRM automation & workflows
 - [Self-Hosted Guide](./SELF_HOSTED.md) — Deploy your own backend

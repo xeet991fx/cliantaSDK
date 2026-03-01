@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output (included in npm package)
-# dist/  <- Don't ignore, needed for npm publish
+# Build output
+dist/
 
 # IDE
 .idea/

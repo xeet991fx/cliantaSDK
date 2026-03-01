@@ -1,33 +1,44 @@
 # Clianta SDK
 
-**Plug-and-play tracking for your CRM.** Install → add one line → done. Everything auto-tracks.
+> **Enterprise-grade visitor intelligence for your CRM.**
+> Auto-captures every interaction on your website and feeds it directly into Clianta CRM — zero manual tracking code required.
 
-No manual tracking code needed. The SDK automatically captures page views, form submissions, clicks, scroll depth, downloads, engagement, exit intent, errors, and performance — and auto-identifies visitors from email fields in forms.
+[![npm](https://img.shields.io/npm/v/@clianta/sdk)](https://www.npmjs.com/package/@clianta/sdk)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue)](https://www.typescriptlang.org/)
 
 ---
 
-## Setup (2 minutes)
+## Quick Start
 
-### React / Next.js
+### 1. Install
 
 ```bash
 npm install @clianta/sdk
 ```
 
+### 2. Configure Environment
+
+Add your Project ID and API Endpoint (found in **Settings → Developer** in your Clianta dashboard):
+
+```bash
+# .env.local (Next.js) or .env (Vite/Vue)
+NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
+NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```
-# .env.local
-NEXT_PUBLIC_CLIANTA_ID=your-project-id
-```
+
+### 3. Integrate
+
+#### Next.js (App Router)
 
 ```tsx
 // app/layout.tsx
 import { CliantaProvider } from '@clianta/sdk/react';
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_ID!}>
+        <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}>
           {children}
         </CliantaProvider>
       </body>
@@ -36,104 +47,128 @@ export default function RootLayout({ children }) {
 }
 ```
 
-**That's it.** Everything auto-tracks. No other code needed.
+#### React (Vite / CRA)
 
----
+```tsx
+// src/main.tsx
+import { CliantaProvider } from '@clianta/sdk/react';
 
-### Script Tag (HTML / WordPress / Webflow / Shopify)
-
-One line. Paste before `</head>`:
-
-```html
-<script src="https://cdn.clianta.online/sdk/v1/clianta.min.js" data-project-id="YOUR_PROJECT_ID"></script>
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <CliantaProvider projectId={import.meta.env.VITE_CLIANTA_PROJECT_ID}>
+      <App />
+    </CliantaProvider>
+  </React.StrictMode>
+);
 ```
 
-**That's it.** The SDK auto-initializes from the `data-project-id` attribute.
-
----
-
-### Vue 3
-
-```bash
-npm install @clianta/sdk
-```
+#### Vue 3
 
 ```typescript
 // main.ts
 import { CliantaPlugin } from '@clianta/sdk/vue';
 
-app.use(CliantaPlugin, { projectId: 'YOUR_PROJECT_ID' });
+const app = createApp(App);
+app.use(CliantaPlugin, {
+  projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
+});
+app.mount('#app');
 ```
 
----
-
-### Angular
+#### Angular
 
 ```typescript
 // clianta.service.ts
-import { createCliantaTracker } from '@clianta/sdk/angular';
+import { Injectable, OnDestroy } from '@angular/core';
+import { createCliantaTracker, CliantaTrackerInstance } from '@clianta/sdk/angular';
+import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class CliantaService implements OnDestroy {
-  private instance = createCliantaTracker({ projectId: 'YOUR_PROJECT_ID' });
+  private instance: CliantaTrackerInstance;
+
+  constructor() {
+    this.instance = createCliantaTracker({
+      projectId: environment.cliantaProjectId,
+      apiEndpoint: environment.cliantaApiEndpoint,
+    });
+  }
+
   get tracker() { return this.instance.tracker; }
+
+  track(eventType: string, eventName: string, properties?: Record<string, unknown>) {
+    this.instance.tracker?.track(eventType, eventName, properties);
+  }
+
+  identify(email: string, traits?: Record<string, unknown>) {
+    return this.instance.tracker?.identify(email, traits);
+  }
+
   ngOnDestroy() { this.instance.destroy(); }
 }
 ```
 
----
-
-### Svelte
+#### Svelte / SvelteKit
 
 ```svelte
+<!-- +layout.svelte -->
 <script>
   import { initClianta } from '@clianta/sdk/svelte';
   import { setContext } from 'svelte';
-  setContext('clianta', initClianta({ projectId: 'YOUR_PROJECT_ID' }));
+
+  const clianta = initClianta({
+    projectId: 'YOUR_PROJECT_ID',
+    apiEndpoint: 'https://your-crm-backend.com',
+  });
+
+  setContext('clianta', clianta);
 </script>
+
 <slot />
 ```
 
+**Done.** Every visitor interaction on your website is now flowing into your CRM.
+
 ---
 
-## What Happens Automatically
+## What Gets Captured Automatically
 
-Once installed, the SDK captures everything with **zero code**:
+Once integrated, the SDK captures the following with **zero additional code**:
 
-| Auto-Tracked | What It Does |
+| Category | What It Captures |
 |---|---|
-| 📄 **Page Views** | Every page load + SPA navigation |
-| 📝 **Form Submissions** | All forms auto-captured |
-| 🔗 **Auto-Identify** | Detects email fields in forms → links visitor to CRM contact |
-| 📜 **Scroll Depth** | 25%, 50%, 75%, 100% milestones |
-| 🖱️ **Clicks** | Buttons, CTAs, links |
-| 📥 **Downloads** | PDF, ZIP, DOC, etc. |
-| ⏱️ **Engagement** | Active time on page vs idle |
-| 🚪 **Exit Intent** | Mouse leaving viewport |
-| ❌ **JS Errors** | Error message + stack trace |
-| ⚡ **Performance** | LCP, FCP, CLS, TTFB (Core Web Vitals) |
+| **Page Views** | Every page load + SPA route changes (history API) |
+| **Form Submissions** | All forms auto-captured with field data |
+| **Visitor Identity** | Detects email fields in forms → auto-links visitor to CRM contact |
+| **Scroll Depth** | 25%, 50%, 75%, 100% milestones |
+| **Click Tracking** | Buttons, CTAs, navigation links |
+| **File Downloads** | PDF, ZIP, DOC, XLSX, CSV, and more |
+| **Engagement** | Active time on page vs idle time |
+| **Exit Intent** | Mouse leaving viewport (desktop) |
+| **JavaScript Errors** | Error message, stack trace, source file |
+| **Core Web Vitals** | LCP, FCP, CLS, TTFB, FID |
 
-Every event is enriched with: `visitorId`, `sessionId`, `contactId` (after auto-identify), UTM params, device info, and `websiteDomain`.
+Every event is enriched with: `visitorId`, `sessionId`, `contactId` (after auto-identify), UTM parameters, device/browser info, and `websiteDomain`.
 
 ---
 
-## Advanced (Optional)
+## Optional: Advanced Features
 
-These are **optional** — the SDK works perfectly without any of this.
+The SDK works perfectly without any of the following. These are for teams that want deeper control.
 
-### Custom Events
+### Custom Event Tracking
 
 ```typescript
 import { useClianta } from '@clianta/sdk/react';
 
 const tracker = useClianta();
-tracker?.track('purchase', 'Order Completed', { value: 99 });
+tracker?.track('purchase', 'Order Completed', { value: 99, currency: 'USD' });
 ```
 
-### Manual Identify
+### Manual Identification
 
 ```typescript
-tracker?.identify('user@example.com', { firstName: 'John' });
+tracker?.identify('user@example.com', { firstName: 'John', company: 'Acme' });
 ```
 
 ### Company Association
@@ -146,29 +181,35 @@ tracker?.group('company-123', { name: 'Acme Inc', plan: 'enterprise' });
 
 ```typescript
 tracker?.use((event, next) => {
-  delete event.properties.sensitiveField;
+  // Strip sensitive data before sending
+  delete event.properties.creditCard;
   next();
 });
 ```
 
-### Public CRM API (No API Key Needed)
+### Frontend CRM Operations
 
 ```typescript
-await tracker?.createContact({ email: 'lead@example.com', firstName: 'Jane' });
-await tracker?.submitForm('contact-form', { email: 'visitor@co.com', message: 'Demo please' });
-await tracker?.createOpportunity({ title: 'Deal', contactEmail: 'lead@co.com', value: 50000 });
+// Create or update a contact (secured by domain whitelist, no API key needed)
+await tracker?.createContact({ email: 'lead@example.com', firstName: 'Jane', company: 'Acme' });
+
+// Submit a form programmatically
+await tracker?.submitForm('demo-request', { email: 'visitor@co.com', message: 'Demo please' });
+
+// Create a sales opportunity
+await tracker?.createOpportunity({ title: 'Enterprise Deal', contactEmail: 'vp@acme.com', value: 50000 });
 ```
 
-### GDPR / Consent
+### GDPR / Consent Management
 
-```typescript
-// Buffer events until consent:
+```tsx
+// Buffer events until consent is given:
 <CliantaProvider projectId="xxx" config={{ consent: { waitForConsent: true } }}>
 
-// Then in your cookie banner:
-tracker?.consent({ analytics: true });
+// In your cookie banner:
+tracker?.consent({ analytics: true, marketing: false });
 
-// Delete all data:
+// Right to erasure:
 tracker?.deleteData();
 ```
 
@@ -176,16 +217,41 @@ tracker?.deleteData();
 
 ## TypeScript
 
-Full type support:
+Full type support included:
 
 ```typescript
-import { type TrackerCore, type CliantaConfig, type GroupTraits, type MiddlewareFn } from '@clianta/sdk';
+import type { TrackerCore, CliantaConfig, GroupTraits, MiddlewareFn } from '@clianta/sdk';
 ```
+
+---
+
+## Configuration Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `projectId` | `string` | — | Your project ID from Clianta dashboard |
+| `apiEndpoint` | `string` | Auto-detect from env vars | CRM backend URL |
+| `debug` | `boolean` | `false` | Enable verbose console logging |
+| `plugins` | `PluginName[]` | All enabled | Plugins to activate |
+| `consent` | `ConsentConfig` | `undefined` | GDPR consent configuration |
+| `cookielessMode` | `boolean` | `false` | Session-only storage (no persistence) |
+| `sessionTimeout` | `number` | `1800000` | Session timeout in ms (default: 30 min) |
+| `batchSize` | `number` | `10` | Events to batch before sending |
+| `flushInterval` | `number` | `5000` | Auto-flush interval in ms |
+
+---
+
+## Security
+
+- **Domain Whitelisting** — Only requests from your registered domains are accepted
+- **No API Keys on Frontend** — CRM write operations are secured by project ID + domain whitelist
+- **Rate Limiting** — 100 requests/minute per IP
+- **Field Whitelisting** — Only safe fields accepted (no `leadScore`, `assignedTo`, etc.)
 
 ---
 
 ## Support
 
-- Documentation: https://docs.clianta.online
-- Issues: https://github.com/clianta/sdk/issues
-- Email: support@clianta.online
+- **Documentation**: [docs.clianta.online](https://docs.clianta.online)
+- **NPM**: [@clianta/sdk](https://www.npmjs.com/package/@clianta/sdk)
+- **Email**: support@clianta.online

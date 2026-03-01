@@ -1,8 +1,37 @@
-# Clianta SDK API Reference
+# Clianta SDK — API Reference
 
-## Tracker Methods
+## Initialization
+
+```typescript
+import { clianta } from '@clianta/sdk';
+
+const tracker = clianta('your-project-id', {
+  debug: true, // optional
+});
+```
+
+Or with framework adapters (recommended):
+
+```tsx
+// React/Next.js
+<CliantaProvider projectId="your-project-id">
+
+// Vue
+app.use(CliantaPlugin, { projectId: 'your-project-id' });
+
+// Angular
+createCliantaTracker({ projectId: '...', apiEndpoint: '...' });
+
+// Svelte
+initClianta({ projectId: '...', apiEndpoint: '...' });
+```
+
+---
+
+## Visitor Intelligence
 
 ### `tracker.track(eventType, eventName, properties?)`
+
 Track a custom event.
 
 | Param | Type | Description |
@@ -11,142 +40,248 @@ Track a custom event.
 | eventName | `string` | Human-readable event name |
 | properties | `Record<string, unknown>` | Optional event metadata |
 
+```typescript
+tracker.track('purchase', 'Order Completed', { orderId: '123', value: 99 });
+```
+
 ### `tracker.identify(email, traits?): Promise<string | null>`
-Identify the current visitor. Returns the CRM contactId.
+
+Identify the current visitor. Links them to a CRM contact and returns the contactId.
 
 | Param | Type | Description |
 |-------|------|-------------|
-| email | `string` | Visitor's email |
-| traits | `UserTraits` | Optional: firstName, lastName, company, phone, etc. |
+| email | `string` | Visitor's email address |
+| traits | `UserTraits` | Optional: firstName, lastName, company, phone, jobTitle, etc. |
+
+```typescript
+const contactId = await tracker.identify('john@example.com', {
+  firstName: 'John',
+  lastName: 'Doe',
+  company: 'Acme Inc',
+});
+```
 
 ### `tracker.page(name?, properties?)`
-Track a page view manually.
 
-### `tracker.consent(state)`
-Update GDPR consent state.
+Track a page view manually (auto-tracked by default).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| analytics | `boolean` | Allow analytics tracking |
-| marketing | `boolean` | Allow marketing tracking |
-| personalization | `boolean` | Allow personalization |
+```typescript
+tracker.page('Pricing Page', { plan: 'enterprise' });
+```
 
-### `tracker.getVisitorProfile(): Promise<VisitorProfile | null>`
-Fetch the current visitor's CRM profile (frontend-safe, own data only).
+### `tracker.group(groupId, traits?)`
 
-Returns: `VisitorProfile` with fields: visitorId, contactId, email, firstName, lastName, company, jobTitle, status, lifecycleStage, tags, leadScore, sessionCount, pageViewCount.
+Associate the current visitor with a company/organization.
 
-### `tracker.getVisitorActivity(options?): Promise<...>`
-Fetch recent events for the current visitor.
-
-Options: `{ page, limit, eventType, startDate, endDate }`
-
-### `tracker.getVisitorTimeline(): Promise<VisitorTimeline | null>`
-Fetch a journey summary: sessions, page views, time spent, top pages, devices.
-
-### `tracker.getVisitorEngagement(): Promise<EngagementMetrics | null>`
-Fetch engagement metrics: time on site, bounce rate, engagement score.
-
-### `tracker.registerEventSchema(eventType, schema)`
-Register a validation schema for an event type (debug mode only).
-
-### `tracker.getVisitorId(): string`
-Get the anonymous visitor UUID.
-
-### `tracker.getSessionId(): string`
-Get the current session ID.
-
-### `tracker.flush(): Promise<void>`
-Force send all queued events.
-
-### `tracker.reset()`
-Reset visitor data (for logout).
-
-### `tracker.deleteData()`
-Delete all stored user data (GDPR right-to-erasure).
-
-### `tracker.debug(enabled)`
-Toggle debug mode.
+```typescript
+tracker.group('company-123', { name: 'Acme Inc', plan: 'enterprise', industry: 'SaaS' });
+```
 
 ---
 
-## CRM Client Methods
+## CRM Operations (Frontend-Safe)
 
-### Initialization
+These work from the frontend **without API keys** — secured by Project ID + domain whitelist + rate limiting.
+
+### `tracker.createContact(data): Promise<CrmResult>`
+
+Create or update a contact by email (upsert).
+
 ```typescript
-import { CRMClient } from '@clianta/sdk';
-
-// Recommended: use env vars for API key (never hardcode)
-const crm = new CRMClient(
-  process.env.CLIANTA_API_ENDPOINT!,
-  process.env.CLIANTA_WORKSPACE_ID!,
-  { apiKey: process.env.CLIANTA_API_KEY }
-);
+const result = await tracker.createContact({
+  email: 'john@example.com',
+  firstName: 'John',
+  lastName: 'Doe',
+  company: 'Acme Inc',
+  jobTitle: 'CTO',
+  phone: '+1234567890',
+  source: 'website',
+  tags: ['enterprise', 'inbound'],
+  customFields: { industry: 'SaaS', teamSize: '50-100' },
+});
+// result.data.contactId, result.data.isNew
 ```
 
-> ⚠️ **Server-side only.** API keys must never be exposed in browser code.
+### `tracker.updateContact(contactId, data): Promise<CrmResult>`
 
-### Contacts
-- `crm.getContacts(params?)` — List contacts (paginated)
-- `crm.getContact(id)` — Get by ID
-- `crm.getContactByEmail(email)` — Get by email
-- `crm.createContact(data)` — Create
-- `crm.updateContact(id, data)` — Update
-- `crm.deleteContact(id)` — Delete
-- `crm.searchContacts(query, filters?)` — Advanced search
+Update an existing contact by ID (limited fields).
 
-### Contact Data
-- `crm.getContactActivity(id, params?)` — Activity timeline
-- `crm.getContactEngagement(id)` — Engagement metrics
-- `crm.getContactTimeline(id, params?)` — Full timeline
+```typescript
+await tracker.updateContact('abc123', {
+  company: 'New Company',
+  tags: ['upgraded'],
+  customFields: { plan: 'enterprise' },
+});
+```
 
-### Companies
-- `crm.getCompanies(params?)` — List
-- `crm.getCompany(id)` — Get
-- `crm.createCompany(data)` — Create
-- `crm.updateCompany(id, data)` — Update
-- `crm.deleteCompany(id)` — Delete
-- `crm.getCompanyContacts(id)` — Contacts in company
-- `crm.getCompanyDeals(id)` — Deals for company
+### `tracker.submitForm(formId, data): Promise<CrmResult>`
 
-### Opportunities
-- `crm.getOpportunities(params?)` — List
-- `crm.getOpportunity(id)` — Get
-- `crm.createOpportunity(data)` — Create
-- `crm.updateOpportunity(id, data)` — Update
-- `crm.deleteOpportunity(id)` — Delete
-- `crm.moveOpportunity(id, stageId)` — Move stage
+Submit a form — auto-creates/updates a CRM contact from form fields.
 
-### Tasks
-- `crm.getTasks(params?)` — List
-- `crm.getTask(id)` — Get
-- `crm.createTask(data)` — Create
-- `crm.updateTask(id, data)` — Update
-- `crm.completeTask(id)` — Mark complete
-- `crm.deleteTask(id)` — Delete
+```typescript
+await tracker.submitForm('demo-request-form', {
+  fields: {
+    email: 'jane@company.com',
+    firstName: 'Jane',
+    company: 'Company Inc',
+    message: 'Interested in enterprise plan',
+  },
+});
+```
 
-### Activities
-- `crm.getContactActivities(contactId)` — Contact activities
-- `crm.createActivity(data)` — Create
-- `crm.logCall(data)` — Log a call
-- `crm.logMeeting(data)` — Log a meeting
-- `crm.addNote(data)` — Add a note
+### `tracker.logActivity(data): Promise<CrmResult>`
 
-### Email
-- `crm.getEmailTemplates()` — List templates
-- `crm.createEmailTemplate(data)` — Create template
-- `crm.sendEmail(data)` — Send email
+Log an activity linked to a contact (append-only).
 
-### Webhooks
-- `crm.listWebhooks()` — List subscriptions
-- `crm.createWebhook(data)` — Create subscription
-- `crm.deleteWebhook(id)` — Delete subscription
+```typescript
+await tracker.logActivity({
+  contactId: 'abc123',
+  type: 'note',
+  title: 'Visited pricing page',
+  description: 'User spent 5 minutes on enterprise pricing',
+});
+```
 
-### Event Triggers
-- `crm.getEventTriggers()` — List triggers
-- `crm.createEventTrigger(data)` — Create trigger
-- `crm.updateEventTrigger(id, data)` — Update trigger
-- `crm.deleteEventTrigger(id)` — Delete trigger
+### `tracker.createOpportunity(data): Promise<CrmResult>`
 
-### Inbound Events
-- `crm.sendEvent(payload)` — Push event from external app
+Create a sales opportunity.
+
+```typescript
+await tracker.createOpportunity({
+  title: 'Demo Request - Acme Inc',
+  contactId: 'abc123',
+  pipelineId: 'pipeline-id',
+  stageId: 'stage-id',
+  value: 50000,
+  description: 'Enterprise demo request from website',
+});
+```
+
+### Allowed Fields
+
+| Operation | Allowed Fields |
+|-----------|---------------|
+| **Create Contact** | email, firstName, lastName, company, jobTitle, phone, source, tags, customFields |
+| **Update Contact** | firstName, lastName, company, jobTitle, phone, tags, customFields |
+| **Log Activity** | contactId, type, title, description, direction, duration, emailSubject, metadata |
+| **Create Opportunity** | title, contactId, pipelineId, stageId, value, currency, description, expectedCloseDate, customFields |
+
+**Blocked fields** (never accepted from frontend): leadScore, assignedTo, userId, salesforceId, qualityScore, intentScore, apolloEnrichment, emailVerification, mergeHistory
+
+---
+
+## Consent & Privacy
+
+### `tracker.consent(state)`
+
+Update the GDPR consent state.
+
+```typescript
+tracker.consent({ analytics: true, marketing: false, personalization: true });
+```
+
+### `tracker.getConsentState(): ConsentState`
+
+Get current consent state.
+
+### `tracker.deleteData()`
+
+Delete all stored visitor data (GDPR right-to-erasure).
+
+---
+
+## Middleware
+
+### `tracker.use(middleware)`
+
+Add event middleware for filtering or transforming events before they're sent.
+
+```typescript
+tracker.use((event, next) => {
+  // Strip sensitive data
+  delete event.properties.creditCard;
+  next();
+});
+```
+
+---
+
+## Utility Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `tracker.getVisitorId()` | `string` | Get anonymous visitor UUID |
+| `tracker.getSessionId()` | `string` | Get current session ID |
+| `tracker.reset()` | `void` | Reset visitor/session (for logout) |
+| `tracker.flush()` | `Promise<void>` | Force send all queued events |
+| `tracker.destroy()` | `Promise<void>` | Clean up and disconnect |
+| `tracker.debug(enabled)` | `void` | Toggle debug mode |
+
+---
+
+## React Hooks
+
+```typescript
+import { useClianta, useCliantaReady, useCliantaTrack } from '@clianta/sdk/react';
+
+// Get tracker instance
+const tracker = useClianta();
+
+// Check if SDK is ready
+const { isReady, tracker } = useCliantaReady();
+
+// Quick track function
+const track = useCliantaTrack();
+track('button_click', 'CTA', { page: 'pricing' });
+```
+
+## Vue Composables
+
+```typescript
+import { useClianta, useCliantaTrack, useCliantaIdentify, useCliantaConsent } from '@clianta/sdk/vue';
+
+const tracker = useClianta();         // Ref<TrackerCore | null>
+const track = useCliantaTrack();      // (type, name, props?) => void
+const identify = useCliantaIdentify(); // (email, traits?) => Promise
+const { consent } = useCliantaConsent();
+```
+
+---
+
+## Configuration
+
+```typescript
+interface CliantaConfig {
+  apiEndpoint?: string;       // Auto-detected from env vars
+  debug?: boolean;            // Default: false
+  plugins?: PluginName[];     // Default: all enabled
+  autoPageView?: boolean;     // Default: true
+  sessionTimeout?: number;    // Default: 1800000 (30 min)
+  batchSize?: number;         // Default: 10
+  flushInterval?: number;     // Default: 5000
+  consent?: ConsentConfig;    // GDPR consent config
+  cookielessMode?: boolean;   // Default: false
+  cookieDomain?: string;      // For cross-subdomain tracking
+  useCookies?: boolean;       // Use cookies for visitor ID
+  persistMode?: 'session' | 'local' | 'none';
+}
+```
+
+---
+
+## Types
+
+```typescript
+import type {
+  CliantaConfig,
+  TrackerCore,
+  TrackingEvent,
+  EventType,
+  UserTraits,
+  ConsentState,
+  Plugin,
+  PluginName,
+  GroupTraits,
+  MiddlewareFn,
+} from '@clianta/sdk';
+```

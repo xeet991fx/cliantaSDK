@@ -2,71 +2,94 @@
 
 ## Overview
 
-The Clianta SDK can be used with a self-hosted backend. This guide covers configuring the SDK to point to your own API server.
+The Clianta SDK connects to your CRM backend. This guide covers configuring the SDK to point to your self-hosted instance.
 
 ## SDK Configuration
 
+The SDK auto-detects your backend URL from environment variables:
+
+```bash
+# Next.js
+NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-api-server.com
+
+# Vite / Vue / Svelte
+VITE_CLIANTA_API_ENDPOINT=https://your-api-server.com
+```
+
+Or pass it directly (Angular, Svelte):
+
 ```typescript
-const tracker = clianta('YOUR_WORKSPACE_ID', {
+createCliantaTracker({
+  projectId: 'your-project-id',
   apiEndpoint: 'https://your-api-server.com',
 });
 ```
 
-For the CRM client:
-```typescript
-const crm = new CRMClient(
-  'https://your-api-server.com',
-  'your-workspace-id',
-  'your-auth-token'
-);
-```
+---
 
 ## Required Backend Endpoints
 
-Your backend must implement these public endpoints:
+Your backend must implement these public endpoints for client-side SDK communication:
 
-### Tracking (No Auth Required)
-- `POST /api/public/track/event` — Receive tracking events
-- `POST /api/public/track/identify` — Identify visitors
-- `GET /api/public/track/visitor/:workspaceId/:visitorId/profile` — Visitor profile
-- `GET /api/public/track/visitor/:workspaceId/:visitorId/activity` — Visitor activity
-- `GET /api/public/track/visitor/:workspaceId/:visitorId/timeline` — Visitor timeline
-- `GET /api/public/track/visitor/:workspaceId/:visitorId/engagement` — Engagement metrics
+### Tracking (No Auth — secured by Project ID + domain whitelist)
 
-### Inbound Events (API Key Required)
-- `POST /api/public/events` — Inbound events from external apps
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/public/track/event` | Receive tracking events |
+| POST | `/api/public/track/identify` | Identify visitors |
 
-### CRM API (Auth Token Required)
-- `GET/POST/PUT/DELETE /api/workspaces/:id/contacts`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/companies`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/opportunities`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/pipelines`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/tasks`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/triggers`
-- `GET/POST/PUT/DELETE /api/workspaces/:id/email-templates`
-- `POST /api/workspaces/:id/emails/send`
-- `GET/POST/DELETE /api/workspaces/:id/webhooks`
+### CRM Operations (No Auth — secured by Project ID + domain whitelist + rate limiting)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/public/crm/contacts` | Create/update contact (upsert) |
+| PUT | `/api/public/crm/contacts/:id` | Update contact (limited fields) |
+| POST | `/api/public/crm/forms/:formId/submit` | Form submission |
+| POST | `/api/public/crm/activities` | Log activity |
+| POST | `/api/public/crm/opportunities` | Create opportunity |
+
+### Internal API (Auth Token Required — dashboard access only)
+
+| Method | Pattern | Description |
+|--------|---------|-------------|
+| CRUD | `/api/workspaces/:id/contacts` | Contact management |
+| CRUD | `/api/workspaces/:id/companies` | Company management |
+| CRUD | `/api/workspaces/:id/opportunities` | Opportunity management |
+| CRUD | `/api/workspaces/:id/pipelines` | Pipeline management |
+| CRUD | `/api/workspaces/:id/tasks` | Task management |
+| CRUD | `/api/workspaces/:id/triggers` | Automation triggers |
+
+---
 
 ## CORS Configuration
 
-Your backend must allow CORS from the websites where the SDK is installed:
+Your backend must allow CORS from websites where the SDK is installed. Configure allowed domains in **Settings → Developer → Allowed Domains** in the Clianta dashboard.
+
+Backend example:
 
 ```typescript
 app.use(cors({
-  origin: ['https://your-website.com'],
+  origin: ['https://your-website.com', 'https://app.your-website.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
 }));
 ```
 
-## HTTPS
+---
 
-Always use HTTPS in production. The SDK will warn if `apiEndpoint` uses HTTP on non-localhost domains.
+## Security
+
+- Always use **HTTPS** in production
+- The SDK will warn if `apiEndpoint` uses HTTP on non-localhost domains
+- Public endpoints are rate-limited (100 req/min per IP)
+- Only whitelisted domains can send tracking data
+
+---
 
 ## Docker Deployment
-
-The backend can be deployed using Docker Compose. See the `docker-compose.yml` in the repository root.
 
 ```bash
 docker-compose up -d
 ```
+
+See `docker-compose.yml` in the repository root for the full configuration.
