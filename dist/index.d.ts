@@ -670,6 +670,24 @@ interface UTMParams {
     utmTerm?: string;
     utmContent?: string;
 }
+interface GroupTraits {
+    /** Company/account name */
+    name?: string;
+    /** Industry */
+    industry?: string;
+    /** Company size */
+    employees?: number;
+    /** Annual revenue */
+    revenue?: number;
+    /** Company website */
+    website?: string;
+    /** Company plan/tier */
+    plan?: string;
+    /** Additional custom properties */
+    [key: string]: unknown;
+}
+/** Event middleware function — intercept or transform events before they are sent */
+type MiddlewareFn = (event: TrackingEvent, next: () => void) => void;
 interface UserTraits {
     firstName?: string;
     lastName?: string;
@@ -713,6 +731,18 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Associate the current visitor with a group (company/account) */
+    group(groupId: string, traits?: GroupTraits): void;
+    /** Merge two visitor identities (e.g., anonymous → logged-in) */
+    alias(newId: string, previousId?: string): Promise<boolean>;
+    /** Track a screen view (for mobile-first PWAs and SPAs) */
+    screen(name: string, properties?: Record<string, unknown>): void;
+    /** Register event middleware to intercept/transform events before sending */
+    use(middleware: MiddlewareFn): void;
+    /** Register a callback to be invoked when the SDK is fully initialized */
+    onReady(callback: () => void): void;
+    /** Check if the SDK is fully initialized and ready */
+    isReady(): boolean;
     /** Get the current visitor's profile from the CRM */
     getVisitorProfile(): Promise<VisitorProfile | null>;
     /** Get the current visitor's recent activity */
@@ -1135,6 +1165,69 @@ interface PublicCrmResult {
 }
 
 /**
+ * VisitorClient — Standalone client for visitor-related API calls.
+ * Extracted from Tracker to keep the core Tracker class focused on tracking.
+ *
+ * Usage (standalone):
+ *   const visitor = new VisitorClient(transport, workspaceId, visitorId);
+ *   const profile = await visitor.getProfile();
+ *
+ * Usage (via Tracker):
+ *   const tracker = clianta({ projectId: '...' });
+ *   const profile = await tracker.visitor.getProfile();
+ */
+
+/** Minimal transport interface — only fetchData is needed */
+interface VisitorTransport {
+    fetchData<T>(url: string, params?: Record<string, string>): Promise<{
+        success: boolean;
+        data?: T;
+        error?: Error | string;
+    }>;
+}
+/**
+ * Privacy-safe visitor API client.
+ * All methods return data for the current visitor only (no cross-visitor access).
+ */
+declare class VisitorClient {
+    private transport;
+    private workspaceId;
+    private visitorId;
+    constructor(transport: VisitorTransport, workspaceId: string, visitorId: string);
+    /** Update visitorId (e.g. after reset) */
+    setVisitorId(id: string): void;
+    private basePath;
+    /**
+     * Get the current visitor's profile from the CRM.
+     * Returns visitor data and linked contact info if identified.
+     */
+    getProfile(): Promise<VisitorProfile | null>;
+    /**
+     * Get the current visitor's recent activity/events.
+     * Returns paginated list of tracking events.
+     */
+    getActivity(options?: VisitorActivityOptions): Promise<{
+        data: VisitorActivity[];
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            pages: number;
+        };
+    } | null>;
+    /**
+     * Get a summarized journey timeline for the current visitor.
+     * Includes top pages, sessions, time spent, and recent activities.
+     */
+    getTimeline(): Promise<VisitorTimeline | null>;
+    /**
+     * Get engagement metrics for the current visitor.
+     * Includes time on site, page views, bounce rate, and engagement score.
+     */
+    getEngagement(): Promise<EngagementMetrics | null>;
+}
+
+/**
  * Main Clianta Tracker Class
  */
 declare class Tracker implements TrackerCore {
@@ -1149,10 +1242,18 @@ declare class Tracker implements TrackerCore {
     private consentManager;
     /** contactId after a successful identify() call */
     private contactId;
+    /** groupId after a successful group() call */
+    private groupId;
     /** Pending identify retry on next flush */
     private pendingIdentify;
     /** Registered event schemas for validation */
     private eventSchemas;
+    /** Event middleware pipeline */
+    private middlewares;
+    /** Ready callbacks */
+    private readyCallbacks;
+    /** Visitor API client (standalone, also accessible via tracker.visitor) */
+    visitor: VisitorClient;
     constructor(workspaceId: string, userConfig?: CliantaConfig);
     /**
      * Create visitor ID based on storage mode
@@ -1192,13 +1293,12 @@ declare class Tracker implements TrackerCore {
     sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
     /**
      * Get the current visitor's profile from the CRM.
-     * Returns visitor data and linked contact info if identified.
-     * Only returns data for the current visitor (privacy-safe for frontend).
+     * @deprecated Use `tracker.visitor.getProfile()` instead.
      */
     getVisitorProfile(): Promise<VisitorProfile | null>;
     /**
      * Get the current visitor's recent activity/events.
-     * Returns paginated list of tracking events for this visitor.
+     * @deprecated Use `tracker.visitor.getActivity()` instead.
      */
     getVisitorActivity(options?: VisitorActivityOptions): Promise<{
         data: VisitorActivity[];
@@ -1211,12 +1311,12 @@ declare class Tracker implements TrackerCore {
     } | null>;
     /**
      * Get a summarized journey timeline for the current visitor.
-     * Includes top pages, sessions, time spent, and recent activities.
+     * @deprecated Use `tracker.visitor.getTimeline()` instead.
      */
     getVisitorTimeline(): Promise<VisitorTimeline | null>;
     /**
      * Get engagement metrics for the current visitor.
-     * Includes time on site, page views, bounce rate, and engagement score.
+     * @deprecated Use `tracker.visitor.getEngagement()` instead.
      */
     getVisitorEngagement(): Promise<EngagementMetrics | null>;
     /**
@@ -1235,6 +1335,49 @@ declare class Tracker implements TrackerCore {
      * Toggle debug mode
      */
     debug(enabled: boolean): void;
+    /**
+     * Associate the current visitor with a group (company/account).
+     * The groupId will be attached to all subsequent track() calls.
+     */
+    group(groupId: string, traits?: GroupTraits): void;
+    /**
+     * Merge two visitor identities.
+     * Links `previousId` (typically the anonymous visitor) to `newId` (the known user).
+     * If `previousId` is omitted, the current visitorId is used.
+     */
+    alias(newId: string, previousId?: string): Promise<boolean>;
+    /**
+     * Track a screen view (for mobile-first PWAs and SPAs).
+     * Similar to page() but semantically for app screens.
+     */
+    screen(name: string, properties?: Record<string, unknown>): void;
+    /**
+     * Register event middleware.
+     * Middleware functions receive the event and a `next` callback.
+     * Call `next()` to pass the event through, or don't call it to drop the event.
+     *
+     * @example
+     * tracker.use((event, next) => {
+     *   // Strip PII from events
+     *   delete event.properties.email;
+     *   next(); // pass it through
+     * });
+     */
+    use(middleware: MiddlewareFn): void;
+    /**
+     * Run event through the middleware pipeline.
+     * Executes each middleware in order; if any skips `next()`, the event is dropped.
+     */
+    private runMiddleware;
+    /**
+     * Register a callback to be invoked when the SDK is fully initialized.
+     * If already initialized, the callback fires immediately.
+     */
+    onReady(callback: () => void): void;
+    /**
+     * Check if the SDK is fully initialized and ready.
+     */
+    isReady(): boolean;
     /**
      * Register a schema for event validation.
      * When debug mode is enabled, events will be validated against registered schemas.
@@ -1406,7 +1549,7 @@ interface StoredConsent {
  */
 
 /** SDK Version */
-declare const SDK_VERSION = "1.4.0";
+declare const SDK_VERSION = "1.6.0";
 
 /**
  * Clianta SDK
@@ -1441,4 +1584,4 @@ declare const SDK_VERSION = "1.4.0";
 declare function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore;
 
 export { CRMClient, ConsentManager, EventTriggersManager, SDK_VERSION, Tracker, clianta, clianta as default };
-export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactTimelineOptions, ContactUpdateAction, EmailAction, EmailTemplate, EngagementMetrics, EventTrigger, EventType, InboundEventPayload, InboundEventResult, InboundEventType, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, PublicActivityData, PublicContactData, PublicContactUpdate, PublicCrmResult, PublicFormSubmission, PublicOpportunityData, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, VisitorActivity, VisitorActivityOptions, VisitorProfile, VisitorTimeline, WebhookAction };
+export type { Activity, ApiResponse, CliantaConfig, Company, ConsentChangeCallback, ConsentConfig, ConsentManagerConfig, ConsentState, Contact, ContactTimelineOptions, ContactUpdateAction, EmailAction, EmailTemplate, EngagementMetrics, EventTrigger, EventType, GroupTraits, InboundEventPayload, InboundEventResult, InboundEventType, MiddlewareFn, Opportunity, PaginatedResponse, Pipeline, PipelineStage, Plugin, PluginName, PublicActivityData, PublicContactData, PublicContactUpdate, PublicCrmResult, PublicFormSubmission, PublicOpportunityData, StoredConsent, Task, TaskAction, TrackerCore, TrackingEvent, TriggerAction, TriggerCondition, TriggerEventType, TriggerExecution, UserTraits, VisitorActivity, VisitorActivityOptions, VisitorProfile, VisitorTimeline, WebhookAction };

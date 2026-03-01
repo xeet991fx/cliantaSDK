@@ -5,6 +5,26 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-01
+
+### Added
+- **`group()` method** — Associate visitors with a company/account. The `groupId` is attached to all subsequent `track()` calls, enabling ABM (Account-Based Marketing) use cases
+- **`alias()` method** — Merge two visitor identities (e.g., anonymous visitor → logged-in user). Supports cross-device identity resolution
+- **`screen()` method** — Track screen views for mobile-first PWAs and SPAs. Semantic equivalent of `page()` for app screens
+- **Event middleware API** — `use((event, next) => { ... })` to intercept, transform, or drop events before they're sent. Supports chaining multiple middleware functions
+- **`onReady()` callback** — Register callbacks that fire when the SDK is fully initialized. If already ready, fires immediately
+- **`isReady()` method** — Check initialization state synchronously
+- **React `ErrorBoundary`** — `CliantaProvider` now wraps children in an ErrorBoundary to prevent SDK errors from crashing the host application
+- **React `useCliantaReady()` hook** — Returns `{ isReady, tracker }` for components that need to wait for initialization
+- **React `onError` prop** — `CliantaProvider` accepts an `onError` callback for custom error handling
+- **New types** — `GroupTraits`, `MiddlewareFn` exported from main SDK entry
+
+### Changed
+- `TrackerCore` interface expanded with `group()`, `alias()`, `screen()`, `use()`, `onReady()`, `isReady()` methods
+- React `CliantaContext` now provides `{ tracker, isReady }` instead of just `tracker`
+- `track()` now runs events through the middleware pipeline before queueing
+- Events include `groupId` field when visitor is associated with a group
+
 ## [1.5.1] - 2026-02-28
 
 ### Added

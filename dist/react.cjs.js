@@ -1,5 +1,5 @@
 /*!
- * Clianta SDK v1.5.1
+ * Clianta SDK v1.6.0
  * (c) 2026 Clianta
  * Released under the MIT License.
  */
@@ -13,7 +13,7 @@ var react = require('react');
  * @see SDK_VERSION in core/config.ts
  */
 /** SDK Version */
-const SDK_VERSION = '1.4.0';
+const SDK_VERSION = '1.6.0';
 /** Default API endpoint — reads from env or falls back to localhost */
 const getDefaultApiEndpoint = () => {
     // Build-time env var (works with Next.js, Vite, CRA, etc.)
@@ -3696,6 +3696,85 @@ class CRMClient {
 }
 
 /**
+ * Privacy-safe visitor API client.
+ * All methods return data for the current visitor only (no cross-visitor access).
+ */
+class VisitorClient {
+    constructor(transport, workspaceId, visitorId) {
+        this.transport = transport;
+        this.workspaceId = workspaceId;
+        this.visitorId = visitorId;
+    }
+    /** Update visitorId (e.g. after reset) */
+    setVisitorId(id) {
+        this.visitorId = id;
+    }
+    basePath() {
+        return `/api/public/track/visitor/${this.workspaceId}/${this.visitorId}`;
+    }
+    /**
+     * Get the current visitor's profile from the CRM.
+     * Returns visitor data and linked contact info if identified.
+     */
+    async getProfile() {
+        const result = await this.transport.fetchData(`${this.basePath()}/profile`);
+        if (result.success && result.data) {
+            logger.debug('Visitor profile fetched:', result.data);
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor profile:', result.error);
+        return null;
+    }
+    /**
+     * Get the current visitor's recent activity/events.
+     * Returns paginated list of tracking events.
+     */
+    async getActivity(options) {
+        const params = {};
+        if (options?.page)
+            params.page = options.page.toString();
+        if (options?.limit)
+            params.limit = options.limit.toString();
+        if (options?.eventType)
+            params.eventType = options.eventType;
+        if (options?.startDate)
+            params.startDate = options.startDate;
+        if (options?.endDate)
+            params.endDate = options.endDate;
+        const result = await this.transport.fetchData(`${this.basePath()}/activity`, params);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor activity:', result.error);
+        return null;
+    }
+    /**
+     * Get a summarized journey timeline for the current visitor.
+     * Includes top pages, sessions, time spent, and recent activities.
+     */
+    async getTimeline() {
+        const result = await this.transport.fetchData(`${this.basePath()}/timeline`);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor timeline:', result.error);
+        return null;
+    }
+    /**
+     * Get engagement metrics for the current visitor.
+     * Includes time on site, page views, bounce rate, and engagement score.
+     */
+    async getEngagement() {
+        const result = await this.transport.fetchData(`${this.basePath()}/engagement`);
+        if (result.success && result.data) {
+            return result.data;
+        }
+        logger.warn('Failed to fetch visitor engagement:', result.error);
+        return null;
+    }
+}
+
+/**
  * Clianta SDK - Main Tracker Class
  * @see SDK_VERSION in core/config.ts
  */
@@ -3708,10 +3787,16 @@ class Tracker {
         this.isInitialized = false;
         /** contactId after a successful identify() call */
         this.contactId = null;
+        /** groupId after a successful group() call */
+        this.groupId = null;
         /** Pending identify retry on next flush */
         this.pendingIdentify = null;
         /** Registered event schemas for validation */
         this.eventSchemas = new Map();
+        /** Event middleware pipeline */
+        this.middlewares = [];
+        /** Ready callbacks */
+        this.readyCallbacks = [];
         if (!workspaceId) {
             throw new Error('[Clianta] Workspace ID is required');
         }
@@ -3737,6 +3822,8 @@ class Tracker {
         this.visitorId = this.createVisitorId();
         this.sessionId = this.createSessionId();
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
+        // Initialize visitor API client
+        this.visitor = new VisitorClient(this.transport, this.workspaceId, this.visitorId);
         // Security warnings
         if (this.config.apiEndpoint.startsWith('http://') &&
             typeof window !== 'undefined' &&
@@ -3751,6 +3838,16 @@ class Tracker {
         this.initPlugins();
         this.isInitialized = true;
         logger.info('SDK initialized successfully');
+        // Fire ready callbacks
+        for (const cb of this.readyCallbacks) {
+            try {
+                cb();
+            }
+            catch (e) {
+                logger.error('onReady callback error:', e);
+            }
+        }
+        this.readyCallbacks = [];
     }
     /**
      * Create visitor ID based on storage mode
@@ -3863,6 +3960,10 @@ class Tracker {
         if (this.contactId) {
             event.contactId = this.contactId;
         }
+        // Attach groupId if known (from a prior group() call)
+        if (this.groupId) {
+            event.groupId = this.groupId;
+        }
         // Validate event against registered schema (debug mode only)
         this.validateEventSchema(eventType, properties);
         // Check consent before tracking
@@ -3876,8 +3977,11 @@ class Tracker {
             logger.debug('Event dropped (no consent):', eventName);
             return;
         }
-        this.queue.push(event);
-        logger.debug('Event tracked:', eventName, properties);
+        // Run event through middleware pipeline
+        this.runMiddleware(event, () => {
+            this.queue.push(event);
+            logger.debug('Event tracked:', eventName, properties);
+        });
     }
     /**
      * Track a page view
@@ -3939,80 +4043,47 @@ class Tracker {
     }
     /**
      * Get the current visitor's profile from the CRM.
-     * Returns visitor data and linked contact info if identified.
-     * Only returns data for the current visitor (privacy-safe for frontend).
+     * @deprecated Use `tracker.visitor.getProfile()` instead.
      */
     async getVisitorProfile() {
         if (!this.isInitialized) {
             logger.warn('SDK not initialized');
             return null;
         }
-        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/profile`);
-        if (result.success && result.data) {
-            logger.debug('Visitor profile fetched:', result.data);
-            return result.data;
-        }
-        logger.warn('Failed to fetch visitor profile:', result.error);
-        return null;
+        return this.visitor.getProfile();
     }
     /**
      * Get the current visitor's recent activity/events.
-     * Returns paginated list of tracking events for this visitor.
+     * @deprecated Use `tracker.visitor.getActivity()` instead.
      */
     async getVisitorActivity(options) {
         if (!this.isInitialized) {
             logger.warn('SDK not initialized');
             return null;
         }
-        const params = {};
-        if (options?.page)
-            params.page = options.page.toString();
-        if (options?.limit)
-            params.limit = options.limit.toString();
-        if (options?.eventType)
-            params.eventType = options.eventType;
-        if (options?.startDate)
-            params.startDate = options.startDate;
-        if (options?.endDate)
-            params.endDate = options.endDate;
-        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/activity`, params);
-        if (result.success && result.data) {
-            return result.data;
-        }
-        logger.warn('Failed to fetch visitor activity:', result.error);
-        return null;
+        return this.visitor.getActivity(options);
     }
     /**
      * Get a summarized journey timeline for the current visitor.
-     * Includes top pages, sessions, time spent, and recent activities.
+     * @deprecated Use `tracker.visitor.getTimeline()` instead.
      */
     async getVisitorTimeline() {
         if (!this.isInitialized) {
             logger.warn('SDK not initialized');
             return null;
         }
-        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/timeline`);
-        if (result.success && result.data) {
-            return result.data;
-        }
-        logger.warn('Failed to fetch visitor timeline:', result.error);
-        return null;
+        return this.visitor.getTimeline();
     }
     /**
      * Get engagement metrics for the current visitor.
-     * Includes time on site, page views, bounce rate, and engagement score.
+     * @deprecated Use `tracker.visitor.getEngagement()` instead.
      */
     async getVisitorEngagement() {
         if (!this.isInitialized) {
             logger.warn('SDK not initialized');
             return null;
         }
-        const result = await this.transport.fetchData(`/api/public/track/visitor/${this.workspaceId}/${this.visitorId}/engagement`);
-        if (result.success && result.data) {
-            return result.data;
-        }
-        logger.warn('Failed to fetch visitor engagement:', result.error);
-        return null;
+        return this.visitor.getEngagement();
     }
     /**
      * Retry pending identify call
@@ -4042,6 +4113,149 @@ class Tracker {
     debug(enabled) {
         logger.enabled = enabled;
         logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+    // ============================================
+    // GROUP, ALIAS, SCREEN
+    // ============================================
+    /**
+     * Associate the current visitor with a group (company/account).
+     * The groupId will be attached to all subsequent track() calls.
+     */
+    group(groupId, traits = {}) {
+        if (!groupId) {
+            logger.warn('groupId is required for group()');
+            return;
+        }
+        this.groupId = groupId;
+        logger.info('Visitor grouped:', groupId);
+        this.track('group', 'Group Identified', {
+            groupId,
+            ...traits,
+        });
+    }
+    /**
+     * Merge two visitor identities.
+     * Links `previousId` (typically the anonymous visitor) to `newId` (the known user).
+     * If `previousId` is omitted, the current visitorId is used.
+     */
+    async alias(newId, previousId) {
+        if (!newId) {
+            logger.warn('newId is required for alias()');
+            return false;
+        }
+        const prevId = previousId || this.visitorId;
+        logger.info('Aliasing visitor:', { from: prevId, to: newId });
+        try {
+            const url = `${this.config.apiEndpoint}/api/public/track/alias`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workspaceId: this.workspaceId,
+                    previousId: prevId,
+                    newId,
+                }),
+            });
+            if (response.ok) {
+                logger.info('Alias successful');
+                return true;
+            }
+            logger.error('Alias failed:', response.status);
+            return false;
+        }
+        catch (error) {
+            logger.error('Alias request failed:', error);
+            return false;
+        }
+    }
+    /**
+     * Track a screen view (for mobile-first PWAs and SPAs).
+     * Similar to page() but semantically for app screens.
+     */
+    screen(name, properties = {}) {
+        this.track('screen_view', name, {
+            ...properties,
+            screenName: name,
+        });
+    }
+    // ============================================
+    // MIDDLEWARE
+    // ============================================
+    /**
+     * Register event middleware.
+     * Middleware functions receive the event and a `next` callback.
+     * Call `next()` to pass the event through, or don't call it to drop the event.
+     *
+     * @example
+     * tracker.use((event, next) => {
+     *   // Strip PII from events
+     *   delete event.properties.email;
+     *   next(); // pass it through
+     * });
+     */
+    use(middleware) {
+        this.middlewares.push(middleware);
+        logger.debug('Middleware registered');
+    }
+    /**
+     * Run event through the middleware pipeline.
+     * Executes each middleware in order; if any skips `next()`, the event is dropped.
+     */
+    runMiddleware(event, finalCallback) {
+        if (this.middlewares.length === 0) {
+            finalCallback();
+            return;
+        }
+        let index = 0;
+        const middlewares = this.middlewares;
+        const next = () => {
+            index++;
+            if (index < middlewares.length) {
+                try {
+                    middlewares[index](event, next);
+                }
+                catch (e) {
+                    logger.error('Middleware error:', e);
+                    finalCallback();
+                }
+            }
+            else {
+                finalCallback();
+            }
+        };
+        try {
+            middlewares[0](event, next);
+        }
+        catch (e) {
+            logger.error('Middleware error:', e);
+            finalCallback();
+        }
+    }
+    // ============================================
+    // LIFECYCLE
+    // ============================================
+    /**
+     * Register a callback to be invoked when the SDK is fully initialized.
+     * If already initialized, the callback fires immediately.
+     */
+    onReady(callback) {
+        if (this.isInitialized) {
+            try {
+                callback();
+            }
+            catch (e) {
+                logger.error('onReady callback error:', e);
+            }
+        }
+        else {
+            this.readyCallbacks.push(callback);
+        }
+    }
+    /**
+     * Check if the SDK is fully initialized and ready.
+     */
+    isReady() {
+        return this.isInitialized;
     }
     /**
      * Register a schema for event validation.
@@ -4337,13 +4551,41 @@ if (typeof window !== 'undefined') {
 /**
  * Clianta SDK - React Integration
  *
- * Provides CliantaProvider component for easy React/Next.js integration
- * using the clianta.config.ts pattern.
+ * Provides CliantaProvider component (with ErrorBoundary) for easy
+ * React/Next.js integration using the clianta.config.ts pattern.
  */
-// Context for accessing tracker throughout the app
-const CliantaContext = react.createContext(null);
+const CliantaContext = react.createContext({
+    tracker: null,
+    isReady: false,
+});
+/**
+ * Internal ErrorBoundary to prevent SDK errors from crashing the host app.
+ * Catches render-time errors in the provider tree.
+ */
+class CliantaErrorBoundary extends react.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error('[Clianta] SDK error caught by ErrorBoundary:', error);
+        this.props.onError?.(error, errorInfo);
+    }
+    render() {
+        if (this.state.hasError) {
+            // Render children anyway — SDK failure shouldn't break the host UI
+            return this.props.fallback ?? this.props.children;
+        }
+        return this.props.children;
+    }
+}
 /**
  * CliantaProvider - Wrap your app to enable tracking
+ *
+ * Includes an ErrorBoundary so SDK failures never crash the host app.
  *
  * @example
  * // In clianta.config.ts:
@@ -4365,8 +4607,9 @@ const CliantaContext = react.createContext(null);
  *   {children}
  * </CliantaProvider>
  */
-function CliantaProvider({ config, children }) {
+function CliantaProvider({ config, children, onError }) {
     const [tracker, setTracker] = react.useState(null);
+    const [isReady, setIsReady] = react.useState(false);
     // Stable ref to projectId — the only value that truly identifies the tracker
     const projectIdRef = react.useRef(config.projectId);
     react.useEffect(() => {
@@ -4380,18 +4623,29 @@ function CliantaProvider({ config, children }) {
         if (projectIdRef.current !== projectId) {
             projectIdRef.current = projectId;
         }
-        // Extract projectId (handled separately) and pass rest as options
-        const { projectId: _, ...options } = config;
-        const instance = clianta(projectId, options);
-        setTracker(instance);
+        try {
+            // Extract projectId (handled separately) and pass rest as options
+            const { projectId: _, ...options } = config;
+            const instance = clianta(projectId, options);
+            setTracker(instance);
+            setIsReady(true);
+        }
+        catch (error) {
+            console.error('[Clianta] Failed to initialize SDK:', error);
+            onError?.(error, { componentStack: '' });
+        }
         // Cleanup: flush pending events on unmount
         return () => {
-            instance?.flush();
+            tracker?.flush();
+            setIsReady(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [config.projectId]);
-    return (jsxRuntime.jsx(CliantaContext.Provider, { value: tracker, children: children }));
+    return (jsxRuntime.jsx(CliantaErrorBoundary, { onError: onError, children: jsxRuntime.jsx(CliantaContext.Provider, { value: { tracker, isReady }, children: children }) }));
 }
+// ============================================
+// HOOKS
+// ============================================
 /**
  * useClianta - Hook to access tracker in any component
  *
@@ -4400,7 +4654,21 @@ function CliantaProvider({ config, children }) {
  * tracker?.track('button_click', 'CTA Button');
  */
 function useClianta() {
-    return react.useContext(CliantaContext);
+    const { tracker } = react.useContext(CliantaContext);
+    return tracker;
+}
+/**
+ * useCliantaReady - Hook to check if SDK is initialized
+ *
+ * @example
+ * const { isReady, tracker } = useCliantaReady();
+ * if (isReady) {
+ *   tracker.track('purchase', 'Order', { value: 99 });
+ * }
+ */
+function useCliantaReady() {
+    const { tracker, isReady } = react.useContext(CliantaContext);
+    return { isReady, tracker };
 }
 /**
  * useCliantaTrack - Convenience hook for tracking events
@@ -4418,5 +4686,6 @@ function useCliantaTrack() {
 
 exports.CliantaProvider = CliantaProvider;
 exports.useClianta = useClianta;
+exports.useCliantaReady = useCliantaReady;
 exports.useCliantaTrack = useCliantaTrack;
 //# sourceMappingURL=react.cjs.js.map

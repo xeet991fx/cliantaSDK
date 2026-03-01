@@ -84,6 +84,63 @@ interface ConsentState {
     personalization?: boolean;
 }
 type EventType = 'page_view' | 'button_click' | 'form_view' | 'form_submit' | 'form_interaction' | 'scroll_depth' | 'engagement' | 'download' | 'exit_intent' | 'error' | 'performance' | 'time_on_page' | 'custom';
+interface TrackingEvent {
+    /** Workspace/project ID */
+    workspaceId: string;
+    /** Anonymous visitor identifier */
+    visitorId: string;
+    /** Session identifier */
+    sessionId: string;
+    /** Event type category */
+    eventType: EventType;
+    /** Human-readable event name */
+    eventName: string;
+    /** Current page URL */
+    url: string;
+    /** Referrer URL */
+    referrer?: string;
+    /** Event properties/metadata */
+    properties: Record<string, unknown>;
+    /** Device information */
+    device: DeviceInfo;
+    /** UTM parameters */
+    utm?: UTMParams;
+    /** ISO timestamp */
+    timestamp: string;
+    /** SDK version */
+    sdkVersion: string;
+}
+interface DeviceInfo {
+    userAgent: string;
+    screen: string;
+    language: string;
+    timezone?: string;
+}
+interface UTMParams {
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    utmTerm?: string;
+    utmContent?: string;
+}
+interface GroupTraits {
+    /** Company/account name */
+    name?: string;
+    /** Industry */
+    industry?: string;
+    /** Company size */
+    employees?: number;
+    /** Annual revenue */
+    revenue?: number;
+    /** Company website */
+    website?: string;
+    /** Company plan/tier */
+    plan?: string;
+    /** Additional custom properties */
+    [key: string]: unknown;
+}
+/** Event middleware function — intercept or transform events before they are sent */
+type MiddlewareFn = (event: TrackingEvent, next: () => void) => void;
 interface UserTraits {
     firstName?: string;
     lastName?: string;
@@ -119,6 +176,18 @@ interface TrackerCore {
     deleteData(): void;
     /** Get current consent state */
     getConsentState(): ConsentState;
+    /** Associate the current visitor with a group (company/account) */
+    group(groupId: string, traits?: GroupTraits): void;
+    /** Merge two visitor identities (e.g., anonymous → logged-in) */
+    alias(newId: string, previousId?: string): Promise<boolean>;
+    /** Track a screen view (for mobile-first PWAs and SPAs) */
+    screen(name: string, properties?: Record<string, unknown>): void;
+    /** Register event middleware to intercept/transform events before sending */
+    use(middleware: MiddlewareFn): void;
+    /** Register a callback to be invoked when the SDK is fully initialized */
+    onReady(callback: () => void): void;
+    /** Check if the SDK is fully initialized and ready */
+    isReady(): boolean;
     /** Get the current visitor's profile from the CRM */
     getVisitorProfile(): Promise<VisitorProfile | null>;
     /** Get the current visitor's recent activity */

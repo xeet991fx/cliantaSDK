@@ -171,6 +171,34 @@ export interface UTMParams {
 // IDENTIFY TYPES
 // ============================================
 
+// ============================================
+// GROUP TYPES
+// ============================================
+
+export interface GroupTraits {
+    /** Company/account name */
+    name?: string;
+    /** Industry */
+    industry?: string;
+    /** Company size */
+    employees?: number;
+    /** Annual revenue */
+    revenue?: number;
+    /** Company website */
+    website?: string;
+    /** Company plan/tier */
+    plan?: string;
+    /** Additional custom properties */
+    [key: string]: unknown;
+}
+
+// ============================================
+// MIDDLEWARE TYPES
+// ============================================
+
+/** Event middleware function — intercept or transform events before they are sent */
+export type MiddlewareFn = (event: TrackingEvent, next: () => void) => void;
+
 export interface UserTraits {
     firstName?: string;
     lastName?: string;
@@ -249,6 +277,24 @@ export interface TrackerCore {
 
     /** Get current consent state */
     getConsentState(): ConsentState;
+
+    /** Associate the current visitor with a group (company/account) */
+    group(groupId: string, traits?: GroupTraits): void;
+
+    /** Merge two visitor identities (e.g., anonymous → logged-in) */
+    alias(newId: string, previousId?: string): Promise<boolean>;
+
+    /** Track a screen view (for mobile-first PWAs and SPAs) */
+    screen(name: string, properties?: Record<string, unknown>): void;
+
+    /** Register event middleware to intercept/transform events before sending */
+    use(middleware: MiddlewareFn): void;
+
+    /** Register a callback to be invoked when the SDK is fully initialized */
+    onReady(callback: () => void): void;
+
+    /** Check if the SDK is fully initialized and ready */
+    isReady(): boolean;
 
     /** Get the current visitor's profile from the CRM */
     getVisitorProfile(): Promise<VisitorProfile | null>;

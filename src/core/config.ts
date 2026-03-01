@@ -6,7 +6,7 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.4.0';
+export const SDK_VERSION = '1.6.0';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {

@@ -11,6 +11,8 @@ import type {
     UserTraits,
     ConsentState,
     Plugin,
+    GroupTraits,
+    MiddlewareFn,
     PublicContactData,
     PublicContactUpdate,
     PublicActivityData,
@@ -53,10 +55,16 @@ export class Tracker implements TrackerCore {
     private consentManager: ConsentManager;
     /** contactId after a successful identify() call */
     private contactId: string | null = null;
+    /** groupId after a successful group() call */
+    private groupId: string | null = null;
     /** Pending identify retry on next flush */
     private pendingIdentify: { email: string; traits: UserTraits } | null = null;
     /** Registered event schemas for validation */
     private eventSchemas: Map<string, Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>> = new Map();
+    /** Event middleware pipeline */
+    private middlewares: MiddlewareFn[] = [];
+    /** Ready callbacks */
+    private readyCallbacks: (() => void)[] = [];
     /** Visitor API client (standalone, also accessible via tracker.visitor) */
     public visitor!: VisitorClient;
 
@@ -113,6 +121,12 @@ export class Tracker implements TrackerCore {
 
         this.isInitialized = true;
         logger.info('SDK initialized successfully');
+
+        // Fire ready callbacks
+        for (const cb of this.readyCallbacks) {
+            try { cb(); } catch (e) { logger.error('onReady callback error:', e); }
+        }
+        this.readyCallbacks = [];
     }
 
     /**
@@ -242,6 +256,11 @@ export class Tracker implements TrackerCore {
             (event as any).contactId = this.contactId;
         }
 
+        // Attach groupId if known (from a prior group() call)
+        if (this.groupId) {
+            (event as any).groupId = this.groupId;
+        }
+
         // Validate event against registered schema (debug mode only)
         this.validateEventSchema(eventType as string, properties);
 
@@ -257,8 +276,11 @@ export class Tracker implements TrackerCore {
             return;
         }
 
-        this.queue.push(event);
-        logger.debug('Event tracked:', eventName, properties);
+        // Run event through middleware pipeline
+        this.runMiddleware(event, () => {
+            this.queue.push(event);
+            logger.debug('Event tracked:', eventName, properties);
+        });
     }
 
     /**
@@ -393,6 +415,157 @@ export class Tracker implements TrackerCore {
     debug(enabled: boolean): void {
         logger.enabled = enabled;
         logger.info(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    // ============================================
+    // GROUP, ALIAS, SCREEN
+    // ============================================
+
+    /**
+     * Associate the current visitor with a group (company/account).
+     * The groupId will be attached to all subsequent track() calls.
+     */
+    group(groupId: string, traits: GroupTraits = {}): void {
+        if (!groupId) {
+            logger.warn('groupId is required for group()');
+            return;
+        }
+
+        this.groupId = groupId;
+        logger.info('Visitor grouped:', groupId);
+
+        this.track('group', 'Group Identified', {
+            groupId,
+            ...traits,
+        });
+    }
+
+    /**
+     * Merge two visitor identities.
+     * Links `previousId` (typically the anonymous visitor) to `newId` (the known user).
+     * If `previousId` is omitted, the current visitorId is used.
+     */
+    async alias(newId: string, previousId?: string): Promise<boolean> {
+        if (!newId) {
+            logger.warn('newId is required for alias()');
+            return false;
+        }
+
+        const prevId = previousId || this.visitorId;
+        logger.info('Aliasing visitor:', { from: prevId, to: newId });
+
+        try {
+            const url = `${this.config.apiEndpoint}/api/public/track/alias`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workspaceId: this.workspaceId,
+                    previousId: prevId,
+                    newId,
+                }),
+            });
+
+            if (response.ok) {
+                logger.info('Alias successful');
+                return true;
+            }
+            logger.error('Alias failed:', response.status);
+            return false;
+        } catch (error) {
+            logger.error('Alias request failed:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Track a screen view (for mobile-first PWAs and SPAs).
+     * Similar to page() but semantically for app screens.
+     */
+    screen(name: string, properties: Record<string, unknown> = {}): void {
+        this.track('screen_view', name, {
+            ...properties,
+            screenName: name,
+        });
+    }
+
+    // ============================================
+    // MIDDLEWARE
+    // ============================================
+
+    /**
+     * Register event middleware.
+     * Middleware functions receive the event and a `next` callback.
+     * Call `next()` to pass the event through, or don't call it to drop the event.
+     *
+     * @example
+     * tracker.use((event, next) => {
+     *   // Strip PII from events
+     *   delete event.properties.email;
+     *   next(); // pass it through
+     * });
+     */
+    use(middleware: MiddlewareFn): void {
+        this.middlewares.push(middleware);
+        logger.debug('Middleware registered');
+    }
+
+    /**
+     * Run event through the middleware pipeline.
+     * Executes each middleware in order; if any skips `next()`, the event is dropped.
+     */
+    private runMiddleware(event: TrackingEvent, finalCallback: () => void): void {
+        if (this.middlewares.length === 0) {
+            finalCallback();
+            return;
+        }
+
+        let index = 0;
+        const middlewares = this.middlewares;
+
+        const next = () => {
+            index++;
+            if (index < middlewares.length) {
+                try {
+                    middlewares[index](event, next);
+                } catch (e) {
+                    logger.error('Middleware error:', e);
+                    finalCallback();
+                }
+            } else {
+                finalCallback();
+            }
+        };
+
+        try {
+            middlewares[0](event, next);
+        } catch (e) {
+            logger.error('Middleware error:', e);
+            finalCallback();
+        }
+    }
+
+    // ============================================
+    // LIFECYCLE
+    // ============================================
+
+    /**
+     * Register a callback to be invoked when the SDK is fully initialized.
+     * If already initialized, the callback fires immediately.
+     */
+    onReady(callback: () => void): void {
+        if (this.isInitialized) {
+            try { callback(); } catch (e) { logger.error('onReady callback error:', e); }
+        } else {
+            this.readyCallbacks.push(callback);
+        }
+    }
+
+    /**
+     * Check if the SDK is fully initialized and ready.
+     */
+    isReady(): boolean {
+        return this.isInitialized;
     }
 
     /**

@@ -52,6 +52,8 @@ export type {
     PublicOpportunityData,
     PublicFormSubmission,
     PublicCrmResult,
+    GroupTraits,
+    MiddlewareFn,
 } from './types';
 
 // Export consent types
