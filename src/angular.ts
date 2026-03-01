@@ -17,8 +17,6 @@
  *   constructor() {
  *     this.instance = createCliantaTracker({
  *       projectId: environment.cliantaProjectId,
- *       apiEndpoint: environment.cliantaApiEndpoint,
- *       debug: !environment.production,
  *     });
  *   }
  *
@@ -62,7 +60,6 @@ export interface CliantaAngularConfig extends CliantaConfig {
  * @example
  * const instance = createCliantaTracker({
  *   projectId: 'your-project-id',
- *   apiEndpoint: environment.cliantaApiEndpoint || 'http://localhost:5000',
  * });
  *
  * instance.tracker?.track('page_view', 'Home Page');
@@ -72,7 +69,7 @@ export interface CliantaAngularConfig extends CliantaConfig {
 export function createCliantaTracker(config: CliantaAngularConfig): CliantaTrackerInstance {
     if (!config.projectId) {
         console.error('[Clianta] Missing projectId in Angular config');
-        return { tracker: null, destroy: () => {} };
+        return { tracker: null, destroy: () => { } };
     }
 
     const { projectId, ...options } = config;

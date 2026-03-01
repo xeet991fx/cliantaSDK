@@ -1,8 +1,9 @@
 /**
  * Clianta SDK - React Integration
  * 
- * Provides CliantaProvider component (with ErrorBoundary) for easy
- * React/Next.js integration using the clianta.config.ts pattern.
+ * TRUE PLUG-AND-PLAY: Just wrap your app with <CliantaProvider projectId="xxx" />
+ * and everything auto-tracks — page views, forms, clicks, scroll, engagement,
+ * downloads, exit intent, errors, performance. Zero manual code needed.
  */
 
 'use client';
@@ -49,8 +50,7 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Internal ErrorBoundary to prevent SDK errors from crashing the host app.
- * Catches render-time errors in the provider tree.
+ * Internal ErrorBoundary — SDK crashes never break the host app.
  */
 class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     constructor(props: ErrorBoundaryProps) {
@@ -69,7 +69,6 @@ class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     render() {
         if (this.state.hasError) {
-            // Render children anyway — SDK failure shouldn't break the host UI
             return this.props.fallback ?? this.props.children;
         }
         return this.props.children;
@@ -81,61 +80,49 @@ class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 // ============================================
 
 export interface CliantaProviderProps {
-    /** Configuration object (from clianta.config.ts) */
-    config: CliantaConfig;
+    /** Project/workspace ID — the ONLY required prop */
+    projectId: string;
+    /** Enable debug logging (default: false) */
+    debug?: boolean;
+    /** Full config for advanced usage (optional — most users don't need this) */
+    config?: Omit<CliantaConfig, 'projectId'>;
     /** React children */
     children: ReactNode;
-    /** Optional error handler when the SDK encounters errors */
+    /** Error handler (optional) */
     onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
 /**
- * CliantaProvider - Wrap your app to enable tracking
+ * CliantaProvider — Plug-and-play tracking for React/Next.js
  * 
- * Includes an ErrorBoundary so SDK failures never crash the host app.
+ * Just wrap your app. Everything auto-tracks. Done.
  * 
  * @example
- * // In clianta.config.ts:
- * import { CliantaConfig } from '@clianta/sdk';
- * 
- * const config: CliantaConfig = {
- *   projectId: 'your-project-id',
- *   apiEndpoint: process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
- *   debug: process.env.NODE_ENV === 'development',
- * };
- * 
- * export default config;
- * 
- * // In app/layout.tsx or main.tsx:
- * import { CliantaProvider } from '@clianta/sdk/react';
- * import cliantaConfig from '../clianta.config';
- * 
- * <CliantaProvider config={cliantaConfig}>
+ * // app/layout.tsx — that's it, one line:
+ * <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_ID!}>
  *   {children}
  * </CliantaProvider>
  */
-export function CliantaProvider({ config, children, onError }: CliantaProviderProps) {
+export function CliantaProvider({ projectId, debug, config, children, onError }: CliantaProviderProps) {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
     const [isReady, setIsReady] = useState(false);
-    // Stable ref to projectId — the only value that truly identifies the tracker
-    const projectIdRef = useRef(config.projectId);
+    const projectIdRef = useRef(projectId);
 
     useEffect(() => {
-        // Initialize tracker with config
-        const projectId = config.projectId;
         if (!projectId) {
-            console.error('[Clianta] Missing projectId in config. Please add projectId to your clianta.config.ts');
+            console.error('[Clianta] Missing projectId prop on CliantaProvider');
             return;
         }
 
-        // Only re-initialize if projectId actually changed
         if (projectIdRef.current !== projectId) {
             projectIdRef.current = projectId;
         }
 
         try {
-            // Extract projectId (handled separately) and pass rest as options
-            const { projectId: _, ...options } = config;
+            const options: CliantaConfig = {
+                debug: debug ?? false,
+                ...config, // advanced config overrides
+            };
             const instance = clianta(projectId, options);
             setTracker(instance);
             setIsReady(true);
@@ -144,13 +131,12 @@ export function CliantaProvider({ config, children, onError }: CliantaProviderPr
             onError?.(error as Error, { componentStack: '' } as ErrorInfo);
         }
 
-        // Cleanup: flush pending events on unmount
         return () => {
             tracker?.flush();
             setIsReady(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [config.projectId]);
+    }, [projectId]);
 
     return (
         <CliantaErrorBoundary onError={onError}>
@@ -166,11 +152,7 @@ export function CliantaProvider({ config, children, onError }: CliantaProviderPr
 // ============================================
 
 /**
- * useClianta - Hook to access tracker in any component
- * 
- * @example
- * const tracker = useClianta();
- * tracker?.track('button_click', 'CTA Button');
+ * useClianta — Access the tracker instance
  */
 export function useClianta(): TrackerCore | null {
     const { tracker } = useContext(CliantaContext);
@@ -178,13 +160,7 @@ export function useClianta(): TrackerCore | null {
 }
 
 /**
- * useCliantaReady - Hook to check if SDK is initialized
- * 
- * @example
- * const { isReady, tracker } = useCliantaReady();
- * if (isReady) {
- *   tracker.track('purchase', 'Order', { value: 99 });
- * }
+ * useCliantaReady — Check if SDK is initialized
  */
 export function useCliantaReady(): { isReady: boolean; tracker: TrackerCore | null } {
     const { tracker, isReady } = useContext(CliantaContext);
@@ -192,11 +168,7 @@ export function useCliantaReady(): { isReady: boolean; tracker: TrackerCore | nu
 }
 
 /**
- * useCliantaTrack - Convenience hook for tracking events
- * 
- * @example
- * const track = useCliantaTrack();
- * track('purchase', 'Order Completed', { orderId: '123' });
+ * useCliantaTrack — Quick tracking hook
  */
 export function useCliantaTrack() {
     const tracker = useClianta();

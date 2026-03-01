@@ -52,7 +52,7 @@ vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
 
 // Don't stub window, document, or history - jsdom provides real implementations
 
-import { clianta, Tracker, CRMClient, ConsentManager, SDK_VERSION } from '../src/index';
+import { clianta, Tracker, ConsentManager, SDK_VERSION } from '../src/index';
 
 describe('SDK Entry Point', () => {
     beforeEach(() => {
@@ -102,10 +102,7 @@ describe('SDK Entry Point', () => {
             expect(typeof Tracker).toBe('function');
         });
 
-        it('should export CRMClient class', () => {
-            expect(CRMClient).toBeDefined();
-            expect(typeof CRMClient).toBe('function');
-        });
+
 
         it('should export ConsentManager class', () => {
             expect(ConsentManager).toBeDefined();
@@ -128,7 +125,6 @@ describe('SDK Entry Point', () => {
             expect((window as any).Clianta).toBeDefined();
             expect((window as any).Clianta.clianta).toBe(clianta);
             expect((window as any).Clianta.Tracker).toBe(Tracker);
-            expect((window as any).Clianta.CRMClient).toBe(CRMClient);
         });
     });
 });

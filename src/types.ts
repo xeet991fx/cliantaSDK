@@ -14,12 +14,6 @@ export interface CliantaConfig {
     /** Backend API endpoint URL */
     apiEndpoint?: string;
 
-    /** Auth token for server-side API access (user JWT) */
-    authToken?: string;
-
-    /** Workspace API key for server-to-server access (use instead of authToken for external apps) */
-    apiKey?: string;
-
     /** Enable debug mode with verbose logging */
     debug?: boolean;
 
@@ -296,21 +290,6 @@ export interface TrackerCore {
     /** Check if the SDK is fully initialized and ready */
     isReady(): boolean;
 
-    /** Get the current visitor's profile from the CRM */
-    getVisitorProfile(): Promise<VisitorProfile | null>;
-
-    /** Get the current visitor's recent activity */
-    getVisitorActivity(options?: VisitorActivityOptions): Promise<{ data: VisitorActivity[]; pagination: { page: number; limit: number; total: number; pages: number } } | null>;
-
-    /** Get a summarized journey timeline for the current visitor */
-    getVisitorTimeline(): Promise<VisitorTimeline | null>;
-
-    /** Get engagement metrics for the current visitor */
-    getVisitorEngagement(): Promise<EngagementMetrics | null>;
-
-    /** Send a server-side inbound event (requires apiKey in config) */
-    sendEvent(payload: import('./core/crm').InboundEventPayload): Promise<import('./core/crm').InboundEventResult>;
-
     // Public CRM methods (no API key required, secured by domain whitelist)
 
     /** Create or update a contact by email (upsert) */
@@ -327,6 +306,9 @@ export interface TrackerCore {
 
     /** Create an opportunity (e.g., from "Request Demo" forms) */
     createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
+
+    /** Destroy the tracker instance, flush pending events, and clean up plugins */
+    destroy(): Promise<void>;
 }
 
 // ============================================

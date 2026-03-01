@@ -6,7 +6,7 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.6.0';
+export const SDK_VERSION = '1.6.2';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
@@ -40,7 +40,7 @@ export const ALL_PLUGINS: PluginName[] = [
     'popupForms',
 ];
 
-/** Core plugins enabled by default */
+/** Core plugins enabled by default — all auto-track with zero config */
 export const DEFAULT_PLUGINS: PluginName[] = [
     'pageView',
     'forms',
@@ -49,14 +49,14 @@ export const DEFAULT_PLUGINS: PluginName[] = [
     'engagement',
     'downloads',
     'exitIntent',
+    'errors',
+    'performance',
 ];
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: Required<CliantaConfig> = {
     projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
-    authToken: '',
-    apiKey: '',
     debug: false,
     autoPageView: true,
     plugins: DEFAULT_PLUGINS,

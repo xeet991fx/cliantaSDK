@@ -26,8 +26,6 @@ import { EventQueue } from './queue';
 import { logger } from './logger';
 import { getPlugin } from '../plugins';
 import { ConsentManager } from '../consent';
-import { CRMClient, type InboundEventPayload, type InboundEventResult } from './crm';
-import { VisitorClient } from './visitorClient';
 import {
     getOrCreateVisitorId,
     getOrCreateSessionId,
@@ -65,8 +63,6 @@ export class Tracker implements TrackerCore {
     private middlewares: MiddlewareFn[] = [];
     /** Ready callbacks */
     private readyCallbacks: (() => void)[] = [];
-    /** Visitor API client (standalone, also accessible via tracker.visitor) */
-    public visitor!: VisitorClient;
 
     constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
         if (!workspaceId) {
@@ -101,19 +97,12 @@ export class Tracker implements TrackerCore {
 
         logger.debug('IDs created', { visitorId: this.visitorId, sessionId: this.sessionId });
 
-        // Initialize visitor API client
-        this.visitor = new VisitorClient(this.transport, this.workspaceId, this.visitorId);
-
         // Security warnings
         if (this.config.apiEndpoint.startsWith('http://') &&
             typeof window !== 'undefined' &&
             !window.location.hostname.includes('localhost') &&
             !window.location.hostname.includes('127.0.0.1')) {
-            logger.warn('apiEndpoint uses HTTP — events and visitor data will be sent unencrypted. Use HTTPS in production.');
-        }
-
-        if (this.config.apiKey && typeof window !== 'undefined') {
-            logger.warn('API key is exposed in client-side code. Use API keys only in server-side (Node.js) environments.');
+            logger.warn('apiEndpoint uses HTTP — events will be sent unencrypted. Use HTTPS in production.');
         }
 
         // Initialize plugins
@@ -333,57 +322,7 @@ export class Tracker implements TrackerCore {
         }
     }
 
-    /**
-     * Send a server-side inbound event via the API key endpoint.
-     * Convenience proxy to CRMClient.sendEvent() — requires apiKey in config.
-     */
-    async sendEvent(payload: InboundEventPayload): Promise<InboundEventResult> {
-        const apiKey = this.config.apiKey;
-        if (!apiKey) {
-            logger.error('sendEvent() requires an apiKey in the SDK config');
-            return { success: false, contactCreated: false, event: payload.event, error: 'No API key configured' };
-        }
-        const client = new CRMClient(this.config.apiEndpoint, this.workspaceId, undefined, apiKey);
-        return client.sendEvent(payload);
-    }
 
-    /**
-     * Get the current visitor's profile from the CRM.
-     * @deprecated Use `tracker.visitor.getProfile()` instead.
-     */
-    async getVisitorProfile(): Promise<import('../types').VisitorProfile | null> {
-        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
-        return this.visitor.getProfile();
-    }
-
-    /**
-     * Get the current visitor's recent activity/events.
-     * @deprecated Use `tracker.visitor.getActivity()` instead.
-     */
-    async getVisitorActivity(
-        options?: import('../types').VisitorActivityOptions
-    ): Promise<{ data: import('../types').VisitorActivity[]; pagination: { page: number; limit: number; total: number; pages: number } } | null> {
-        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
-        return this.visitor.getActivity(options);
-    }
-
-    /**
-     * Get a summarized journey timeline for the current visitor.
-     * @deprecated Use `tracker.visitor.getTimeline()` instead.
-     */
-    async getVisitorTimeline(): Promise<import('../types').VisitorTimeline | null> {
-        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
-        return this.visitor.getTimeline();
-    }
-
-    /**
-     * Get engagement metrics for the current visitor.
-     * @deprecated Use `tracker.visitor.getEngagement()` instead.
-     */
-    async getVisitorEngagement(): Promise<import('../types').EngagementMetrics | null> {
-        if (!this.isInitialized) { logger.warn('SDK not initialized'); return null; }
-        return this.visitor.getEngagement();
-    }
 
     /**
      * Retry pending identify call

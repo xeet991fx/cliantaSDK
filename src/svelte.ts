@@ -12,7 +12,6 @@
  *
  *   const cliantaStore = initClianta({
  *     projectId: 'your-project-id',
- *     apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   });
  *
  *   setContext('clianta', cliantaStore);
@@ -142,15 +141,15 @@ export function initClianta(config: CliantaSvelteConfig): CliantaStore {
 function createNullStore(): CliantaStore {
     return {
         get tracker() { return null; },
-        track() {},
+        track() { },
         identify() { return Promise.resolve(null); },
-        page() {},
-        consent() {},
+        page() { },
+        consent() { },
         getVisitorId() { return undefined; },
         getSessionId() { return undefined; },
         flush() { return Promise.resolve(); },
-        reset() {},
-        destroy() {},
+        reset() { },
+        destroy() { },
     };
 }
 

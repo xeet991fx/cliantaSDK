@@ -38,8 +38,6 @@ export interface CliantaPluginOptions extends CliantaConfig {
  * const app = createApp(App);
  * app.use(CliantaPlugin, {
  *   projectId: 'your-project-id',
- *   apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
- *   debug: import.meta.env.DEV,
  * });
  * app.mount('#app');
  */

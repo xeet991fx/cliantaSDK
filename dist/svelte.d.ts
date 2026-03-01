@@ -1,34 +1,4 @@
 /**
- * Clianta SDK - CRM API Client
- * @see SDK_VERSION in core/config.ts
- */
-
-type InboundEventType = 'user.registered' | 'user.updated' | 'user.subscribed' | 'user.unsubscribed' | 'contact.created' | 'contact.updated' | 'purchase.completed';
-interface InboundEventPayload {
-    /** Event type (e.g. "user.registered") */
-    event: InboundEventType;
-    /** Contact data — at least email or phone is required */
-    contact: {
-        email?: string;
-        phone?: string;
-        firstName?: string;
-        lastName?: string;
-        company?: string;
-        jobTitle?: string;
-        tags?: string[];
-    };
-    /** Optional extra data stored as customFields on the contact */
-    data?: Record<string, unknown>;
-}
-interface InboundEventResult {
-    success: boolean;
-    contactCreated: boolean;
-    contactId?: string;
-    event: string;
-    error?: string;
-}
-
-/**
  * Clianta SDK - Type Definitions
  * @see SDK_VERSION in core/config.ts
  */
@@ -37,10 +7,6 @@ interface CliantaConfig {
     projectId?: string;
     /** Backend API endpoint URL */
     apiEndpoint?: string;
-    /** Auth token for server-side API access (user JWT) */
-    authToken?: string;
-    /** Workspace API key for server-to-server access (use instead of authToken for external apps) */
-    apiKey?: string;
     /** Enable debug mode with verbose logging */
     debug?: boolean;
     /** Automatically track page views on load and navigation */
@@ -188,24 +154,6 @@ interface TrackerCore {
     onReady(callback: () => void): void;
     /** Check if the SDK is fully initialized and ready */
     isReady(): boolean;
-    /** Get the current visitor's profile from the CRM */
-    getVisitorProfile(): Promise<VisitorProfile | null>;
-    /** Get the current visitor's recent activity */
-    getVisitorActivity(options?: VisitorActivityOptions): Promise<{
-        data: VisitorActivity[];
-        pagination: {
-            page: number;
-            limit: number;
-            total: number;
-            pages: number;
-        };
-    } | null>;
-    /** Get a summarized journey timeline for the current visitor */
-    getVisitorTimeline(): Promise<VisitorTimeline | null>;
-    /** Get engagement metrics for the current visitor */
-    getVisitorEngagement(): Promise<EngagementMetrics | null>;
-    /** Send a server-side inbound event (requires apiKey in config) */
-    sendEvent(payload: InboundEventPayload): Promise<InboundEventResult>;
     /** Create or update a contact by email (upsert) */
     createContact(data: PublicContactData): Promise<PublicCrmResult>;
     /** Update an existing contact by ID (limited fields) */
@@ -216,76 +164,8 @@ interface TrackerCore {
     logActivity(data: PublicActivityData): Promise<PublicCrmResult>;
     /** Create an opportunity (e.g., from "Request Demo" forms) */
     createOpportunity(data: PublicOpportunityData): Promise<PublicCrmResult>;
-}
-interface VisitorProfile {
-    visitorId: string;
-    contactId?: string;
-    email?: string;
-    firstName?: string;
-    lastName?: string;
-    company?: string;
-    jobTitle?: string;
-    phone?: string;
-    status?: string;
-    lifecycleStage?: string;
-    tags?: string[];
-    leadScore?: number;
-    firstSeen?: string;
-    lastSeen?: string;
-    sessionCount?: number;
-    pageViewCount?: number;
-    totalTimeSpent?: number;
-    customFields?: Record<string, unknown>;
-}
-interface VisitorActivity {
-    _id?: string;
-    eventType: string;
-    eventName: string;
-    url: string;
-    properties?: Record<string, unknown>;
-    timestamp: string;
-}
-interface VisitorTimeline {
-    visitorId: string;
-    contactId?: string;
-    firstSeen: string;
-    lastSeen: string;
-    totalSessions: number;
-    totalPageViews: number;
-    totalEvents: number;
-    totalTimeSpentSeconds: number;
-    averageSessionDurationSeconds: number;
-    topPages: Array<{
-        url: string;
-        views: number;
-        avgTimeSeconds?: number;
-    }>;
-    recentActivities: VisitorActivity[];
-    devices: Array<{
-        userAgent: string;
-        lastSeen: string;
-    }>;
-}
-interface EngagementMetrics {
-    visitorId: string;
-    totalTimeOnSiteSeconds: number;
-    averageSessionDurationSeconds: number;
-    totalPageViews: number;
-    totalSessions: number;
-    engagementScore: number;
-    bounceRate: number;
-    lastActiveAt: string;
-    topEvents: Array<{
-        eventType: string;
-        count: number;
-    }>;
-}
-interface VisitorActivityOptions {
-    page?: number;
-    limit?: number;
-    eventType?: string;
-    startDate?: string;
-    endDate?: string;
+    /** Destroy the tracker instance, flush pending events, and clean up plugins */
+    destroy(): Promise<void>;
 }
 interface PublicContactData {
     email: string;
@@ -358,7 +238,6 @@ interface PublicCrmResult {
  *
  *   const cliantaStore = initClianta({
  *     projectId: 'your-project-id',
- *     apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT || 'http://localhost:5000',
  *   });
  *
  *   setContext('clianta', cliantaStore);

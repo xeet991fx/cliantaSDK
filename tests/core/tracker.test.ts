@@ -268,118 +268,20 @@ describe('Tracker', () => {
         });
     });
 
-    describe('Read-Back APIs', () => {
-        it('should fetch visitor profile', async () => {
-            const mockProfile = {
-                visitorId: '12345678-1234-1234-1234-123456789abc',
-                firstName: 'John',
-                lastName: 'Doe',
-                email: 'john@example.com',
-                sessionCount: 5,
-                pageViewCount: 20,
-            };
-            
-            vi.mocked(fetch).mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ success: true, data: mockProfile }),
-            } as any);
 
-            tracker = new Tracker(workspaceId);
-            const profile = await tracker.getVisitorProfile();
-            
-            expect(fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/api/public/track/visitor/'),
-                expect.objectContaining({ method: 'GET' })
-            );
-        });
 
-        it('should return null when visitor profile fetch fails', async () => {
-            vi.mocked(fetch).mockResolvedValueOnce({
-                ok: false,
-                status: 404,
-            } as any);
-
-            tracker = new Tracker(workspaceId);
-            const profile = await tracker.getVisitorProfile();
-            expect(profile).toBeNull();
-        });
-
-        it('should fetch visitor activity with options', async () => {
-            vi.mocked(fetch).mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    success: true,
-                    data: { data: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } },
-                }),
-            } as any);
-
-            tracker = new Tracker(workspaceId);
-            const activity = await tracker.getVisitorActivity({ page: 1, limit: 10, eventType: 'page_view' });
-            
-            expect(fetch).toHaveBeenCalled();
-        });
-
-        it('should fetch visitor timeline', async () => {
-            vi.mocked(fetch).mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    success: true,
-                    data: {
-                        visitorId: 'v1',
-                        firstSeen: '2024-01-01',
-                        lastSeen: '2024-01-15',
-                        totalSessions: 3,
-                        totalPageViews: 10,
-                        totalEvents: 15,
-                        totalTimeSpentSeconds: 1800,
-                    },
-                }),
-            } as any);
-
-            tracker = new Tracker(workspaceId);
-            const timeline = await tracker.getVisitorTimeline();
-            
-            expect(fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/timeline'),
-                expect.anything()
-            );
-        });
-
-        it('should fetch visitor engagement', async () => {
-            vi.mocked(fetch).mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    success: true,
-                    data: {
-                        visitorId: 'v1',
-                        totalTimeOnSiteSeconds: 3600,
-                        engagementScore: 75,
-                        bounceRate: 0.3,
-                    },
-                }),
-            } as any);
-
-            tracker = new Tracker(workspaceId);
-            const engagement = await tracker.getVisitorEngagement();
-            
-            expect(fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/engagement'),
-                expect.anything()
-            );
-        });
-    });
 
     describe('Event Schema Validation', () => {
         it('should register and validate event schema', () => {
             tracker = new Tracker(workspaceId, { debug: true });
-            
+
             tracker.registerEventSchema('purchase', {
                 productId: 'string',
                 price: 'number',
             });
 
             // Valid event - should not warn
-            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
             tracker.track('purchase', 'Order', { productId: 'p1', price: 29.99 });
             // Warn spy may or may not be called depending on logger implementation
             warnSpy.mockRestore();
