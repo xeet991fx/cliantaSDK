@@ -6,20 +6,29 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.6.2';
+export const SDK_VERSION = '1.6.4';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
-    // Build-time env var (works with Next.js, Vite, CRA, etc.)
+    // Next.js (process.env)
     if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CLIANTA_API_ENDPOINT) {
         return process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT;
     }
-    if (typeof process !== 'undefined' && process.env?.VITE_CLIANTA_API_ENDPOINT) {
-        return process.env.VITE_CLIANTA_API_ENDPOINT;
+    // Vite / Vue / Svelte / SvelteKit (import.meta.env)
+    try {
+        // @ts-ignore — import.meta.env is Vite-specific
+        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLIANTA_API_ENDPOINT) {
+            // @ts-ignore
+            return import.meta.env.VITE_CLIANTA_API_ENDPOINT;
+        }
+    } catch {
+        // import.meta not available in this environment
     }
+    // Create React App (process.env)
     if (typeof process !== 'undefined' && process.env?.REACT_APP_CLIANTA_API_ENDPOINT) {
         return process.env.REACT_APP_CLIANTA_API_ENDPOINT;
     }
+    // Generic fallback
     if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
         return process.env.CLIANTA_API_ENDPOINT;
     }

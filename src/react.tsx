@@ -80,8 +80,10 @@ class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 // ============================================
 
 export interface CliantaProviderProps {
-    /** Project/workspace ID — the ONLY required prop */
+    /** Project/workspace ID — required */
     projectId: string;
+    /** API endpoint URL (e.g. https://api.clianta.online) */
+    apiEndpoint?: string;
     /** Enable debug logging (default: false) */
     debug?: boolean;
     /** Full config for advanced usage (optional — most users don't need this) */
@@ -98,12 +100,14 @@ export interface CliantaProviderProps {
  * Just wrap your app. Everything auto-tracks. Done.
  * 
  * @example
- * // app/layout.tsx — that's it, one line:
- * <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_ID!}>
+ * <CliantaProvider
+ *   projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}
+ *   apiEndpoint={process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT!}
+ * >
  *   {children}
  * </CliantaProvider>
  */
-export function CliantaProvider({ projectId, debug, config, children, onError }: CliantaProviderProps) {
+export function CliantaProvider({ projectId, apiEndpoint, debug, config, children, onError }: CliantaProviderProps) {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
     const [isReady, setIsReady] = useState(false);
     const projectIdRef = useRef(projectId);
@@ -122,6 +126,7 @@ export function CliantaProvider({ projectId, debug, config, children, onError }:
             const options: CliantaConfig = {
                 debug: debug ?? false,
                 ...config, // advanced config overrides
+                ...(apiEndpoint ? { apiEndpoint } : {}),
             };
             const instance = clianta(projectId, options);
             setTracker(instance);
