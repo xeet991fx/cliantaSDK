@@ -6,7 +6,7 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.6.4';
+export const SDK_VERSION = '1.6.7';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
@@ -47,6 +47,7 @@ export const ALL_PLUGINS: PluginName[] = [
     'errors',
     'performance',
     'popupForms',
+    'autoIdentify',
 ];
 
 /** Core plugins enabled by default — all auto-track with zero config */
@@ -60,6 +61,7 @@ export const DEFAULT_PLUGINS: PluginName[] = [
     'exitIntent',
     'errors',
     'performance',
+    'autoIdentify',
 ];
 
 /** Default configuration values */

@@ -58,7 +58,8 @@ export type PluginName =
     | 'exitIntent'
     | 'errors'
     | 'performance'
-    | 'popupForms';
+    | 'popupForms'
+    | 'autoIdentify';
 
 // ============================================
 // CONSENT TYPES

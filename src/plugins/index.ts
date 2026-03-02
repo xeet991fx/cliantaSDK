@@ -14,6 +14,7 @@ export { ExitIntentPlugin } from './exitIntent';
 export { ErrorsPlugin } from './errors';
 export { PerformancePlugin } from './performance';
 export { PopupFormsPlugin } from './popupForms';
+export { AutoIdentifyPlugin } from './autoIdentify';
 
 import type { Plugin, PluginName } from '../types';
 import { PageViewPlugin } from './pageView';
@@ -26,6 +27,7 @@ import { ExitIntentPlugin } from './exitIntent';
 import { ErrorsPlugin } from './errors';
 import { PerformancePlugin } from './performance';
 import { PopupFormsPlugin } from './popupForms';
+import { AutoIdentifyPlugin } from './autoIdentify';
 
 /**
  * Get plugin instance by name
@@ -52,6 +54,8 @@ export function getPlugin(name: PluginName): Plugin {
             return new PerformancePlugin();
         case 'popupForms':
             return new PopupFormsPlugin();
+        case 'autoIdentify':
+            return new AutoIdentifyPlugin();
         default:
             throw new Error(`Unknown plugin: ${name}`);
     }
