@@ -31,8 +31,13 @@ export class ClicksPlugin extends BasePlugin {
     }
 
     private handleClick(e: MouseEvent): void {
-        const target = e.target as Element;
-        if (!target || !isTrackableClickElement(target)) return;
+        // Walk up the DOM to find the nearest trackable ancestor.
+        // Without this, clicks on <span> or <img> inside a <button> are silently dropped.
+        let target: Element | null = e.target as Element;
+        while (target && !isTrackableClickElement(target)) {
+            target = target.parentElement;
+        }
+        if (!target) return;
 
         const buttonText = getElementText(target, 100);
         const elementInfo = getElementInfo(target);

@@ -6,7 +6,7 @@
 import type { CliantaConfig, PluginName } from '../types';
 
 /** SDK Version */
-export const SDK_VERSION = '1.6.7';
+export const SDK_VERSION = '1.7.0';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
@@ -32,6 +32,20 @@ export const getDefaultApiEndpoint = (): string => {
     if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
         return process.env.CLIANTA_API_ENDPOINT;
     }
+
+    // No env var found — warn if we're not on localhost (likely a production misconfiguration)
+    const isLocalhost =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if (!isLocalhost && typeof console !== 'undefined') {
+        console.warn(
+            '[Clianta] No API endpoint configured. ' +
+            'Set NEXT_PUBLIC_CLIANTA_API_ENDPOINT (Next.js), VITE_CLIANTA_API_ENDPOINT (Vite), ' +
+            'or pass apiEndpoint directly to clianta(). ' +
+            'Falling back to localhost — tracking will not work in production.'
+        );
+    }
+
     return 'http://localhost:5000';
 };
 

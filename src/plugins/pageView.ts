@@ -6,6 +6,9 @@
 import type { PluginName, TrackerCore } from '../types';
 import { BasePlugin } from './base';
 
+/** Sentinel flag to prevent double-wrapping history methods across multiple SDK instances */
+const WRAPPED_FLAG = '__clianta_pv_wrapped__';
+
 /**
  * Page View Plugin - Tracks page views
  */
@@ -13,6 +16,7 @@ export class PageViewPlugin extends BasePlugin {
     name: PluginName = 'pageView';
     private originalPushState: typeof history.pushState | null = null;
     private originalReplaceState: typeof history.replaceState | null = null;
+    private navHandler: (() => void) | null = null;
     private popstateHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
@@ -21,48 +25,65 @@ export class PageViewPlugin extends BasePlugin {
         // Track initial page view
         this.trackPageView();
 
-        // Track SPA navigation (History API)
-        if (typeof window !== 'undefined') {
-            // Store originals for cleanup
+        if (typeof window === 'undefined') return;
+
+        // Only wrap history methods once — guard against multiple SDK instances (e.g. microfrontends)
+        // wrapping them repeatedly, which would cause duplicate navigation events and broken cleanup.
+        if (!(history.pushState as any)[WRAPPED_FLAG]) {
             this.originalPushState = history.pushState;
             this.originalReplaceState = history.replaceState;
 
-            // Intercept pushState and replaceState
-            const self = this;
+            const originalPush = this.originalPushState;
+            const originalReplace = this.originalReplaceState;
+
             history.pushState = function (...args) {
-                self.originalPushState!.apply(history, args);
-                self.trackPageView();
-                // Notify other plugins (e.g. ScrollPlugin) about navigation
+                originalPush.apply(history, args);
+                // Dispatch event so all listening instances track the navigation
                 window.dispatchEvent(new Event('clianta:navigation'));
             };
+            (history.pushState as any)[WRAPPED_FLAG] = true;
 
             history.replaceState = function (...args) {
-                self.originalReplaceState!.apply(history, args);
-                self.trackPageView();
+                originalReplace.apply(history, args);
                 window.dispatchEvent(new Event('clianta:navigation'));
             };
-
-            // Handle back/forward navigation
-            this.popstateHandler = () => this.trackPageView();
-            window.addEventListener('popstate', this.popstateHandler);
+            (history.replaceState as any)[WRAPPED_FLAG] = true;
         }
+
+        // Each instance listens to the shared navigation event rather than embedding
+        // tracking directly in the pushState wrapper — decouples tracking from wrapping.
+        this.navHandler = () => this.trackPageView();
+        window.addEventListener('clianta:navigation', this.navHandler);
+
+        // Handle back/forward navigation
+        this.popstateHandler = () => this.trackPageView();
+        window.addEventListener('popstate', this.popstateHandler);
     }
 
     destroy(): void {
-        // Restore original history methods
+        if (typeof window !== 'undefined') {
+            if (this.navHandler) {
+                window.removeEventListener('clianta:navigation', this.navHandler);
+                this.navHandler = null;
+            }
+            if (this.popstateHandler) {
+                window.removeEventListener('popstate', this.popstateHandler);
+                this.popstateHandler = null;
+            }
+        }
+
+        // Restore original history methods only if this instance was the one that wrapped them
         if (this.originalPushState) {
             history.pushState = this.originalPushState;
+            delete (history.pushState as any)[WRAPPED_FLAG];
             this.originalPushState = null;
         }
         if (this.originalReplaceState) {
             history.replaceState = this.originalReplaceState;
+            delete (history.replaceState as any)[WRAPPED_FLAG];
             this.originalReplaceState = null;
         }
-        // Remove popstate listener
-        if (this.popstateHandler && typeof window !== 'undefined') {
-            window.removeEventListener('popstate', this.popstateHandler);
-            this.popstateHandler = null;
-        }
+
         super.destroy();
     }
 

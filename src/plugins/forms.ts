@@ -14,6 +14,7 @@ export class FormsPlugin extends BasePlugin {
     private trackedForms: WeakSet<HTMLFormElement> = new WeakSet();
     private formInteractions: Set<string> = new Set();
     private observer: MutationObserver | null = null;
+    private observerTimer: ReturnType<typeof setTimeout> | null = null;
     private listeners: { element: EventTarget; event: string; handler: EventListener }[] = [];
 
     init(tracker: TrackerCore): void {
@@ -24,14 +25,21 @@ export class FormsPlugin extends BasePlugin {
         // Track existing forms
         this.trackAllForms();
 
-        // Watch for dynamically added forms
+        // Watch for dynamically added forms — debounced to avoid O(DOM) cost on every mutation
         if (typeof MutationObserver !== 'undefined') {
-            this.observer = new MutationObserver(() => this.trackAllForms());
+            this.observer = new MutationObserver(() => {
+                if (this.observerTimer) clearTimeout(this.observerTimer);
+                this.observerTimer = setTimeout(() => this.trackAllForms(), 100);
+            });
             this.observer.observe(document.body, { childList: true, subtree: true });
         }
     }
 
     destroy(): void {
+        if (this.observerTimer) {
+            clearTimeout(this.observerTimer);
+            this.observerTimer = null;
+        }
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;

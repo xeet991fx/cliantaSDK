@@ -393,28 +393,18 @@ export class Tracker implements TrackerCore {
         const prevId = previousId || this.visitorId;
         logger.info('Aliasing visitor:', { from: prevId, to: newId });
 
-        try {
-            const url = `${this.config.apiEndpoint}/api/public/track/alias`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    workspaceId: this.workspaceId,
-                    previousId: prevId,
-                    newId,
-                }),
-            });
+        const result = await this.transport.sendPost('/api/public/track/alias', {
+            workspaceId: this.workspaceId,
+            previousId: prevId,
+            newId,
+        });
 
-            if (response.ok) {
-                logger.info('Alias successful');
-                return true;
-            }
-            logger.error('Alias failed:', response.status);
-            return false;
-        } catch (error) {
-            logger.error('Alias request failed:', error);
-            return false;
+        if (result.success) {
+            logger.info('Alias successful');
+            return true;
         }
+        logger.error('Alias failed:', result.error ?? result.status);
+        return false;
     }
 
     /**

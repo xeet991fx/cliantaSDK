@@ -71,14 +71,27 @@ let globalInstance: Tracker | null = null;
  * });
  */
 export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore {
-    // Return existing instance if same workspace
+    // Return existing instance if same workspace and no config change
     if (globalInstance && globalInstance.getWorkspaceId() === workspaceId) {
+        if (config && Object.keys(config).length > 0) {
+            // Config was passed to an already-initialized instance — warn the developer
+            // because the new config is ignored. They must call destroy() first to reconfigure.
+            if (typeof console !== 'undefined') {
+                console.warn(
+                    '[Clianta] clianta() called with config on an already-initialized instance ' +
+                    'for workspace "' + workspaceId + '". The new config was ignored. ' +
+                    'Call tracker.destroy() first if you need to reconfigure.'
+                );
+            }
+        }
         return globalInstance;
     }
 
-    // Destroy existing instance if workspace changed
+    // Destroy existing instance if workspace changed (fire-and-forget flush, then destroy)
     if (globalInstance) {
-        globalInstance.destroy();
+        // Kick off async flush+destroy without blocking the new instance creation.
+        // Using void to make the intentional fire-and-forget explicit.
+        void globalInstance.destroy();
     }
 
     // Create new instance
@@ -110,9 +123,21 @@ if (typeof window !== 'undefined') {
         const projectId = script.getAttribute('data-project-id');
         if (!projectId) return;
 
-        const debug = script.hasAttribute('data-debug');
+        const initConfig: CliantaConfig = {
+            debug: script.hasAttribute('data-debug'),
+        };
 
-        const instance = clianta(projectId, { debug });
+        // Support additional config via script tag attributes:
+        //   data-api-endpoint="https://api.yourhost.com"
+        //   data-cookieless  (boolean flag)
+        //   data-use-cookies (boolean flag)
+        const apiEndpoint = script.getAttribute('data-api-endpoint');
+        if (apiEndpoint) initConfig.apiEndpoint = apiEndpoint;
+
+        if (script.hasAttribute('data-cookieless')) initConfig.cookielessMode = true;
+        if (script.hasAttribute('data-use-cookies')) initConfig.useCookies = true;
+
+        const instance = clianta(projectId, initConfig);
 
         // Expose the auto-initialized instance globally
         (window as any).__clianta = instance;

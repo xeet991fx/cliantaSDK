@@ -9,10 +9,15 @@ import { BasePlugin } from './base';
 /**
  * Error Tracking Plugin - Tracks JavaScript errors
  */
+/** Max unique errors to track per page (prevents queue flooding from error loops) */
+const MAX_UNIQUE_ERRORS = 20;
+
 export class ErrorsPlugin extends BasePlugin {
     name: PluginName = 'errors';
     private boundErrorHandler: ((e: ErrorEvent) => void) | null = null;
     private boundRejectionHandler: ((e: PromiseRejectionEvent) => void) | null = null;
+    /** Seen error fingerprints — deduplicates repeated identical errors */
+    private seenErrors: Set<string> = new Set();
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
@@ -39,6 +44,9 @@ export class ErrorsPlugin extends BasePlugin {
     }
 
     private handleError(e: ErrorEvent): void {
+        const fingerprint = `${e.message}:${e.filename}:${e.lineno}`;
+        if (!this.dedup(fingerprint)) return;
+
         this.track('error', 'JavaScript Error', {
             message: e.message,
             filename: e.filename,
@@ -49,8 +57,20 @@ export class ErrorsPlugin extends BasePlugin {
     }
 
     private handleRejection(e: PromiseRejectionEvent): void {
-        this.track('error', 'Unhandled Promise Rejection', {
-            reason: String(e.reason).substring(0, 200),
-        });
+        const reason = String(e.reason).substring(0, 200);
+        if (!this.dedup(reason)) return;
+
+        this.track('error', 'Unhandled Promise Rejection', { reason });
+    }
+
+    /**
+     * Returns true if this error fingerprint is new (should be tracked).
+     * Caps at MAX_UNIQUE_ERRORS to prevent queue flooding from error loops.
+     */
+    private dedup(fingerprint: string): boolean {
+        if (this.seenErrors.has(fingerprint)) return false;
+        if (this.seenErrors.size >= MAX_UNIQUE_ERRORS) return false;
+        this.seenErrors.add(fingerprint);
+        return true;
     }
 }

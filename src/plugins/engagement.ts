@@ -15,6 +15,8 @@ export class EngagementPlugin extends BasePlugin {
     private engagementStartTime = 0;
     private isEngaged = false;
     private engagementTimeout: ReturnType<typeof setTimeout> | null = null;
+    /** Guard: beforeunload + visibilitychange:hidden both fire on tab close — only report once */
+    private unloadReported = false;
     private boundMarkEngaged: (() => void) | null = null;
     private boundTrackTimeOnPage: (() => void) | null = null;
     private boundVisibilityHandler: (() => void) | null = null;
@@ -36,8 +38,9 @@ export class EngagementPlugin extends BasePlugin {
             if (document.visibilityState === 'hidden') {
                 this.trackTimeOnPage();
             } else {
-                // Reset engagement timer when page becomes visible again
+                // Page is visible again — reset both the time counter and the unload guard
                 this.engagementStartTime = Date.now();
+                this.unloadReported = false;
             }
         };
 
@@ -89,6 +92,7 @@ export class EngagementPlugin extends BasePlugin {
         this.pageLoadTime = Date.now();
         this.engagementStartTime = Date.now();
         this.isEngaged = false;
+        this.unloadReported = false;
         if (this.engagementTimeout) {
             clearTimeout(this.engagementTimeout);
             this.engagementTimeout = null;
@@ -113,8 +117,11 @@ export class EngagementPlugin extends BasePlugin {
     }
 
     private trackTimeOnPage(): void {
-        const timeSpent = Math.floor((Date.now() - this.engagementStartTime) / 1000);
+        // Guard: beforeunload and visibilitychange:hidden both fire on tab close — only report once
+        if (this.unloadReported) return;
+        this.unloadReported = true;
 
+        const timeSpent = Math.floor((Date.now() - this.engagementStartTime) / 1000);
         if (timeSpent > 0) {
             this.track('time_on_page', 'Time Spent', {
                 seconds: timeSpent,

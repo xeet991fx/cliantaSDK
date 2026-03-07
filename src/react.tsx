@@ -14,6 +14,7 @@ import {
     createContext,
     useContext,
     useRef,
+    useCallback,
     Component,
     type ReactNode,
     type ErrorInfo,
@@ -110,16 +111,12 @@ export interface CliantaProviderProps {
 export function CliantaProvider({ projectId, apiEndpoint, debug, config, children, onError }: CliantaProviderProps) {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
     const [isReady, setIsReady] = useState(false);
-    const projectIdRef = useRef(projectId);
+    const trackerRef = useRef<TrackerCore | null>(null);
 
     useEffect(() => {
         if (!projectId) {
             console.error('[Clianta] Missing projectId prop on CliantaProvider');
             return;
-        }
-
-        if (projectIdRef.current !== projectId) {
-            projectIdRef.current = projectId;
         }
 
         try {
@@ -129,6 +126,7 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
                 ...(apiEndpoint ? { apiEndpoint } : {}),
             };
             const instance = clianta(projectId, options);
+            trackerRef.current = instance;
             setTracker(instance);
             setIsReady(true);
         } catch (error) {
@@ -137,7 +135,8 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
         }
 
         return () => {
-            tracker?.flush();
+            // Use ref so cleanup always flushes the live instance, not the stale closure value
+            trackerRef.current?.flush();
             setIsReady(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,16 +173,16 @@ export function useCliantaReady(): { isReady: boolean; tracker: TrackerCore | nu
 
 /**
  * useCliantaTrack — Quick tracking hook
+ * Stable function reference (useCallback) — safe to use as a dependency or pass as a prop.
  */
 export function useCliantaTrack() {
     const tracker = useClianta();
-    return (
-        eventType: string,
-        eventName: string,
-        properties?: Record<string, unknown>
-    ) => {
-        tracker?.track(eventType, eventName, properties);
-    };
+    return useCallback(
+        (eventType: string, eventName: string, properties?: Record<string, unknown>) => {
+            tracker?.track(eventType, eventName, properties);
+        },
+        [tracker]
+    );
 }
 
 // Re-export types for convenience

@@ -9,7 +9,10 @@ import { logger } from './logger';
 
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_RETRY_DELAY = 1000; // 1 second
+const DEFAULT_RETRY_DELAY = 1000; // 1 second base — doubles each attempt (exponential backoff)
+
+/** fetch keepalive hard limit in browsers (64KB) */
+const KEEPALIVE_SIZE_LIMIT = 60_000; // leave 4KB margin
 
 /**
  * Transport class for sending data to the backend
@@ -32,6 +35,12 @@ export class Transport {
     async sendEvents(events: TrackingEvent[]): Promise<TransportResult> {
         const url = `${this.config.apiEndpoint}/api/public/track/event`;
         const payload = JSON.stringify({ events });
+
+        // keepalive has a 64KB hard limit — fall back to beacon if too large
+        if (payload.length > KEEPALIVE_SIZE_LIMIT) {
+            const sent = this.sendBeacon(events);
+            return sent ? { success: true } : this.send(url, payload, 1, false);
+        }
 
         return this.send(url, payload);
     }
@@ -102,6 +111,16 @@ export class Transport {
     }
 
     /**
+     * Send an arbitrary POST request through the transport (with timeout + retry).
+     * Used for one-off calls like alias() that don't fit the event-batch or identify shapes.
+     */
+    async sendPost(path: string, body: unknown): Promise<TransportResult> {
+        const url = `${this.config.apiEndpoint}${path}`;
+        const payload = JSON.stringify(body);
+        return this.send(url, payload);
+    }
+
+    /**
      * Fetch data from the tracking API (GET request)
      * Used for read-back APIs (visitor profile, activity, etc.)
      */
@@ -138,17 +157,21 @@ export class Transport {
     }
 
     /**
-     * Internal send with retry logic
+     * Internal send with exponential backoff retry logic
      */
-    private async send(url: string, payload: string, attempt = 1): Promise<TransportResult> {
+    private async send(url: string, payload: string, attempt = 1, useKeepalive = true): Promise<TransportResult> {
+        // Don't bother sending when offline — caller should re-queue
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            logger.warn('Device offline, skipping send');
+            return { success: false, error: new Error('offline') };
+        }
+
         try {
             const response = await this.fetchWithTimeout(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: payload,
-                keepalive: true,
+                keepalive: useKeepalive,
             });
 
             if (response.ok) {
@@ -156,22 +179,25 @@ export class Transport {
                 return { success: true, status: response.status };
             }
 
-            // Server error - may retry
+            // Server error — retry with exponential backoff
             if (response.status >= 500 && attempt < this.config.maxRetries) {
-                logger.warn(`Server error (${response.status}), retrying...`);
-                await this.delay(this.config.retryDelay * attempt);
-                return this.send(url, payload, attempt + 1);
+                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
+                logger.warn(`Server error (${response.status}), retrying in ${backoff}ms...`);
+                await this.delay(backoff);
+                return this.send(url, payload, attempt + 1, useKeepalive);
             }
 
-            // Client error - don't retry
+            // 4xx — don't retry (bad payload, auth failure, etc.)
             logger.error(`Request failed with status ${response.status}`);
             return { success: false, status: response.status };
         } catch (error) {
-            // Network error - retry if possible
-            if (attempt < this.config.maxRetries) {
-                logger.warn(`Network error, retrying (${attempt}/${this.config.maxRetries})...`);
-                await this.delay(this.config.retryDelay * attempt);
-                return this.send(url, payload, attempt + 1);
+            // Network error — retry with exponential backoff if still online
+            const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+            if (isOnline && attempt < this.config.maxRetries) {
+                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
+                logger.warn(`Network error, retrying in ${backoff}ms (${attempt}/${this.config.maxRetries})...`);
+                await this.delay(backoff);
+                return this.send(url, payload, attempt + 1, useKeepalive);
             }
 
             logger.error('Request failed after retries:', error);

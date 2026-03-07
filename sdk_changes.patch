@@ -1,0 +1,667 @@
+﻿diff --git a/package-lock.json b/package-lock.json
+index ac0dba5..81b39ac 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -29,12 +29,19 @@
+             },
+             "peerDependencies": {
+                 "react": ">=17.0.0",
++                "svelte": ">=4.0.0",
+                 "vue": ">=3.0.0"
+             },
+             "peerDependenciesMeta": {
++                "@angular/core": {
++                    "optional": true
++                },
+                 "react": {
+                     "optional": true
+                 },
++                "svelte": {
++                    "optional": true
++                },
+                 "vue": {
+                     "optional": true
+                 }
+diff --git a/src/core/config.ts b/src/core/config.ts
+index 36b8c8d..552b687 100644
+--- a/src/core/config.ts
++++ b/src/core/config.ts
+@@ -32,6 +32,20 @@ export const getDefaultApiEndpoint = (): string => {
+     if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
+         return process.env.CLIANTA_API_ENDPOINT;
+     }
++
++    // No env var found ΓÇö warn if we're not on localhost (likely a production misconfiguration)
++    const isLocalhost =
++        typeof window !== 'undefined' &&
++        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
++    if (!isLocalhost && typeof console !== 'undefined') {
++        console.warn(
++            '[Clianta] No API endpoint configured. ' +
++            'Set NEXT_PUBLIC_CLIANTA_API_ENDPOINT (Next.js), VITE_CLIANTA_API_ENDPOINT (Vite), ' +
++            'or pass apiEndpoint directly to clianta(). ' +
++            'Falling back to localhost ΓÇö tracking will not work in production.'
++        );
++    }
++
+     return 'http://localhost:5000';
+ };
+ 
+diff --git a/src/core/queue.ts b/src/core/queue.ts
+index 4306b42..3b7c68d 100644
+--- a/src/core/queue.ts
++++ b/src/core/queue.ts
+@@ -25,6 +25,7 @@ export class EventQueue {
+     private config: Required<QueueConfig>;
+     private flushTimer: ReturnType<typeof setInterval> | null = null;
+     private isFlushing = false;
++    private isOnline = true;
+     /** Rate limiting: timestamps of recent events */
+     private eventTimestamps: number[] = [];
+     private persistMode: 'session' | 'local' | 'none';
+@@ -32,6 +33,10 @@ export class EventQueue {
+     private boundBeforeUnload: (() => void) | null = null;
+     private boundVisibilityChange: (() => void) | null = null;
+     private boundPageHide: (() => void) | null = null;
++    private boundOnline: (() => void) | null = null;
++    private boundOffline: (() => void) | null = null;
++    /** Guards against double-flush on unload (beforeunload + pagehide + visibilitychange all fire) */
++    private unloadFlushed = false;
+ 
+     constructor(transport: Transport, config: Partial<QueueConfig> = {}) {
+         this.transport = transport;
+@@ -42,6 +47,7 @@ export class EventQueue {
+             storageKey: config.storageKey ?? STORAGE_KEYS.EVENT_QUEUE,
+         };
+         this.persistMode = (config as any).persistMode || 'session';
++        this.isOnline = typeof navigator === 'undefined' || navigator.onLine;
+ 
+         // Restore persisted queue
+         this.restoreQueue();
+@@ -104,7 +110,7 @@ export class EventQueue {
+      * Flush the queue (send all events)
+      */
+     async flush(): Promise<void> {
+-        if (this.isFlushing || this.queue.length === 0) {
++        if (this.isFlushing || this.queue.length === 0 || !this.isOnline) {
+             return;
+         }
+ 
+@@ -139,10 +145,13 @@ export class EventQueue {
+     }
+ 
+     /**
+-     * Flush synchronously using sendBeacon (for page unload)
++     * Flush synchronously using sendBeacon (for page unload).
++     * Guarded: no-ops after the first call per navigation to prevent
++     * triple-flush from beforeunload + visibilitychange + pagehide.
+      */
+     flushSync(): void {
+-        if (this.queue.length === 0) return;
++        if (this.unloadFlushed || this.queue.length === 0) return;
++        this.unloadFlushed = true;
+ 
+         const events = this.queue.splice(0, this.queue.length);
+         logger.debug(`Sync flushing ${events.length} events via beacon`);
+@@ -183,17 +192,12 @@ export class EventQueue {
+             clearInterval(this.flushTimer);
+             this.flushTimer = null;
+         }
+-        // Remove unload handlers
+         if (typeof window !== 'undefined') {
+-            if (this.boundBeforeUnload) {
+-                window.removeEventListener('beforeunload', this.boundBeforeUnload);
+-            }
+-            if (this.boundVisibilityChange) {
+-                window.removeEventListener('visibilitychange', this.boundVisibilityChange);
+-            }
+-            if (this.boundPageHide) {
+-                window.removeEventListener('pagehide', this.boundPageHide);
+-            }
++            if (this.boundBeforeUnload) window.removeEventListener('beforeunload', this.boundBeforeUnload);
++            if (this.boundVisibilityChange) window.removeEventListener('visibilitychange', this.boundVisibilityChange);
++            if (this.boundPageHide) window.removeEventListener('pagehide', this.boundPageHide);
++            if (this.boundOnline) window.removeEventListener('online', this.boundOnline);
++            if (this.boundOffline) window.removeEventListener('offline', this.boundOffline);
+         }
+     }
+ 
+@@ -211,26 +215,40 @@ export class EventQueue {
+     }
+ 
+     /**
+-     * Setup page unload handlers
++     * Setup page unload handlers and online/offline listeners
+      */
+     private setupUnloadHandlers(): void {
+         if (typeof window === 'undefined') return;
+ 
+-        // Flush on page unload
++        // All three unload events share the same guarded flushSync()
+         this.boundBeforeUnload = () => this.flushSync();
+         window.addEventListener('beforeunload', this.boundBeforeUnload);
+ 
+-        // Flush when page becomes hidden
+         this.boundVisibilityChange = () => {
+             if (document.visibilityState === 'hidden') {
+                 this.flushSync();
++            } else {
++                // Page became visible again (e.g. tab switch back) ΓÇö reset guard
++                this.unloadFlushed = false;
+             }
+         };
+         window.addEventListener('visibilitychange', this.boundVisibilityChange);
+ 
+-        // Flush on page hide (iOS Safari)
+         this.boundPageHide = () => this.flushSync();
+         window.addEventListener('pagehide', this.boundPageHide);
++
++        // Pause queue when offline, resume + flush when back online
++        this.boundOnline = () => {
++            logger.info('Connection restored ΓÇö flushing queued events');
++            this.isOnline = true;
++            this.flush();
++        };
++        this.boundOffline = () => {
++            logger.warn('Connection lost ΓÇö pausing event queue');
++            this.isOnline = false;
++        };
++        window.addEventListener('online', this.boundOnline);
++        window.addEventListener('offline', this.boundOffline);
+     }
+ 
+     /**
+diff --git a/src/core/transport.ts b/src/core/transport.ts
+index 07f7e4e..b1d0e70 100644
+--- a/src/core/transport.ts
++++ b/src/core/transport.ts
+@@ -9,7 +9,10 @@ import { logger } from './logger';
+ 
+ const DEFAULT_TIMEOUT = 10000; // 10 seconds
+ const DEFAULT_MAX_RETRIES = 3;
+-const DEFAULT_RETRY_DELAY = 1000; // 1 second
++const DEFAULT_RETRY_DELAY = 1000; // 1 second base ΓÇö doubles each attempt (exponential backoff)
++
++/** fetch keepalive hard limit in browsers (64KB) */
++const KEEPALIVE_SIZE_LIMIT = 60_000; // leave 4KB margin
+ 
+ /**
+  * Transport class for sending data to the backend
+@@ -33,6 +36,12 @@ export class Transport {
+         const url = `${this.config.apiEndpoint}/api/public/track/event`;
+         const payload = JSON.stringify({ events });
+ 
++        // keepalive has a 64KB hard limit ΓÇö fall back to beacon if too large
++        if (payload.length > KEEPALIVE_SIZE_LIMIT) {
++            const sent = this.sendBeacon(events);
++            return sent ? { success: true } : this.send(url, payload, 1, false);
++        }
++
+         return this.send(url, payload);
+     }
+ 
+@@ -138,17 +147,21 @@ export class Transport {
+     }
+ 
+     /**
+-     * Internal send with retry logic
++     * Internal send with exponential backoff retry logic
+      */
+-    private async send(url: string, payload: string, attempt = 1): Promise<TransportResult> {
++    private async send(url: string, payload: string, attempt = 1, useKeepalive = true): Promise<TransportResult> {
++        // Don't bother sending when offline ΓÇö caller should re-queue
++        if (typeof navigator !== 'undefined' && !navigator.onLine) {
++            logger.warn('Device offline, skipping send');
++            return { success: false, error: new Error('offline') };
++        }
++
+         try {
+             const response = await this.fetchWithTimeout(url, {
+                 method: 'POST',
+-                headers: {
+-                    'Content-Type': 'application/json',
+-                },
++                headers: { 'Content-Type': 'application/json' },
+                 body: payload,
+-                keepalive: true,
++                keepalive: useKeepalive,
+             });
+ 
+             if (response.ok) {
+@@ -156,22 +169,25 @@ export class Transport {
+                 return { success: true, status: response.status };
+             }
+ 
+-            // Server error - may retry
++            // Server error ΓÇö retry with exponential backoff
+             if (response.status >= 500 && attempt < this.config.maxRetries) {
+-                logger.warn(`Server error (${response.status}), retrying...`);
+-                await this.delay(this.config.retryDelay * attempt);
+-                return this.send(url, payload, attempt + 1);
++                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
++                logger.warn(`Server error (${response.status}), retrying in ${backoff}ms...`);
++                await this.delay(backoff);
++                return this.send(url, payload, attempt + 1, useKeepalive);
+             }
+ 
+-            // Client error - don't retry
++            // 4xx ΓÇö don't retry (bad payload, auth failure, etc.)
+             logger.error(`Request failed with status ${response.status}`);
+             return { success: false, status: response.status };
+         } catch (error) {
+-            // Network error - retry if possible
+-            if (attempt < this.config.maxRetries) {
+-                logger.warn(`Network error, retrying (${attempt}/${this.config.maxRetries})...`);
+-                await this.delay(this.config.retryDelay * attempt);
+-                return this.send(url, payload, attempt + 1);
++            // Network error ΓÇö retry with exponential backoff if still online
++            const isOnline = typeof navigator === 'undefined' || navigator.onLine;
++            if (isOnline && attempt < this.config.maxRetries) {
++                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
++                logger.warn(`Network error, retrying in ${backoff}ms (${attempt}/${this.config.maxRetries})...`);
++                await this.delay(backoff);
++                return this.send(url, payload, attempt + 1, useKeepalive);
+             }
+ 
+             logger.error('Request failed after retries:', error);
+diff --git a/src/index.ts b/src/index.ts
+index b45d330..4b87768 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -71,14 +71,27 @@ let globalInstance: Tracker | null = null;
+  * });
+  */
+ export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore {
+-    // Return existing instance if same workspace
++    // Return existing instance if same workspace and no config change
+     if (globalInstance && globalInstance.getWorkspaceId() === workspaceId) {
++        if (config && Object.keys(config).length > 0) {
++            // Config was passed to an already-initialized instance ΓÇö warn the developer
++            // because the new config is ignored. They must call destroy() first to reconfigure.
++            if (typeof console !== 'undefined') {
++                console.warn(
++                    '[Clianta] clianta() called with config on an already-initialized instance ' +
++                    'for workspace "' + workspaceId + '". The new config was ignored. ' +
++                    'Call tracker.destroy() first if you need to reconfigure.'
++                );
++            }
++        }
+         return globalInstance;
+     }
+ 
+-    // Destroy existing instance if workspace changed
++    // Destroy existing instance if workspace changed (fire-and-forget flush, then destroy)
+     if (globalInstance) {
+-        globalInstance.destroy();
++        // Kick off async flush+destroy without blocking the new instance creation.
++        // Using void to make the intentional fire-and-forget explicit.
++        void globalInstance.destroy();
+     }
+ 
+     // Create new instance
+@@ -110,9 +123,21 @@ if (typeof window !== 'undefined') {
+         const projectId = script.getAttribute('data-project-id');
+         if (!projectId) return;
+ 
+-        const debug = script.hasAttribute('data-debug');
++        const initConfig: CliantaConfig = {
++            debug: script.hasAttribute('data-debug'),
++        };
+ 
+-        const instance = clianta(projectId, { debug });
++        // Support additional config via script tag attributes:
++        //   data-api-endpoint="https://api.yourhost.com"
++        //   data-cookieless  (boolean flag)
++        //   data-use-cookies (boolean flag)
++        const apiEndpoint = script.getAttribute('data-api-endpoint');
++        if (apiEndpoint) initConfig.apiEndpoint = apiEndpoint;
++
++        if (script.hasAttribute('data-cookieless')) initConfig.cookielessMode = true;
++        if (script.hasAttribute('data-use-cookies')) initConfig.useCookies = true;
++
++        const instance = clianta(projectId, initConfig);
+ 
+         // Expose the auto-initialized instance globally
+         (window as any).__clianta = instance;
+diff --git a/src/plugins/clicks.ts b/src/plugins/clicks.ts
+index 55115d9..eb43b5c 100644
+--- a/src/plugins/clicks.ts
++++ b/src/plugins/clicks.ts
+@@ -31,8 +31,13 @@ export class ClicksPlugin extends BasePlugin {
+     }
+ 
+     private handleClick(e: MouseEvent): void {
+-        const target = e.target as Element;
+-        if (!target || !isTrackableClickElement(target)) return;
++        // Walk up the DOM to find the nearest trackable ancestor.
++        // Without this, clicks on <span> or <img> inside a <button> are silently dropped.
++        let target: Element | null = e.target as Element;
++        while (target && !isTrackableClickElement(target)) {
++            target = target.parentElement;
++        }
++        if (!target) return;
+ 
+         const buttonText = getElementText(target, 100);
+         const elementInfo = getElementInfo(target);
+diff --git a/src/plugins/engagement.ts b/src/plugins/engagement.ts
+index aab58da..88cba3c 100644
+--- a/src/plugins/engagement.ts
++++ b/src/plugins/engagement.ts
+@@ -15,6 +15,8 @@ export class EngagementPlugin extends BasePlugin {
+     private engagementStartTime = 0;
+     private isEngaged = false;
+     private engagementTimeout: ReturnType<typeof setTimeout> | null = null;
++    /** Guard: beforeunload + visibilitychange:hidden both fire on tab close ΓÇö only report once */
++    private unloadReported = false;
+     private boundMarkEngaged: (() => void) | null = null;
+     private boundTrackTimeOnPage: (() => void) | null = null;
+     private boundVisibilityHandler: (() => void) | null = null;
+@@ -36,8 +38,9 @@ export class EngagementPlugin extends BasePlugin {
+             if (document.visibilityState === 'hidden') {
+                 this.trackTimeOnPage();
+             } else {
+-                // Reset engagement timer when page becomes visible again
++                // Page is visible again ΓÇö reset both the time counter and the unload guard
+                 this.engagementStartTime = Date.now();
++                this.unloadReported = false;
+             }
+         };
+ 
+@@ -113,8 +116,11 @@ export class EngagementPlugin extends BasePlugin {
+     }
+ 
+     private trackTimeOnPage(): void {
+-        const timeSpent = Math.floor((Date.now() - this.engagementStartTime) / 1000);
++        // Guard: beforeunload and visibilitychange:hidden both fire on tab close ΓÇö only report once
++        if (this.unloadReported) return;
++        this.unloadReported = true;
+ 
++        const timeSpent = Math.floor((Date.now() - this.engagementStartTime) / 1000);
+         if (timeSpent > 0) {
+             this.track('time_on_page', 'Time Spent', {
+                 seconds: timeSpent,
+diff --git a/src/plugins/errors.ts b/src/plugins/errors.ts
+index c90c79d..e579bc1 100644
+--- a/src/plugins/errors.ts
++++ b/src/plugins/errors.ts
+@@ -9,10 +9,15 @@ import { BasePlugin } from './base';
+ /**
+  * Error Tracking Plugin - Tracks JavaScript errors
+  */
++/** Max unique errors to track per page (prevents queue flooding from error loops) */
++const MAX_UNIQUE_ERRORS = 20;
++
+ export class ErrorsPlugin extends BasePlugin {
+     name: PluginName = 'errors';
+     private boundErrorHandler: ((e: ErrorEvent) => void) | null = null;
+     private boundRejectionHandler: ((e: PromiseRejectionEvent) => void) | null = null;
++    /** Seen error fingerprints ΓÇö deduplicates repeated identical errors */
++    private seenErrors: Set<string> = new Set();
+ 
+     init(tracker: TrackerCore): void {
+         super.init(tracker);
+@@ -39,6 +44,9 @@ export class ErrorsPlugin extends BasePlugin {
+     }
+ 
+     private handleError(e: ErrorEvent): void {
++        const fingerprint = `${e.message}:${e.filename}:${e.lineno}`;
++        if (!this.dedup(fingerprint)) return;
++
+         this.track('error', 'JavaScript Error', {
+             message: e.message,
+             filename: e.filename,
+@@ -49,8 +57,20 @@ export class ErrorsPlugin extends BasePlugin {
+     }
+ 
+     private handleRejection(e: PromiseRejectionEvent): void {
+-        this.track('error', 'Unhandled Promise Rejection', {
+-            reason: String(e.reason).substring(0, 200),
+-        });
++        const reason = String(e.reason).substring(0, 200);
++        if (!this.dedup(reason)) return;
++
++        this.track('error', 'Unhandled Promise Rejection', { reason });
++    }
++
++    /**
++     * Returns true if this error fingerprint is new (should be tracked).
++     * Caps at MAX_UNIQUE_ERRORS to prevent queue flooding from error loops.
++     */
++    private dedup(fingerprint: string): boolean {
++        if (this.seenErrors.has(fingerprint)) return false;
++        if (this.seenErrors.size >= MAX_UNIQUE_ERRORS) return false;
++        this.seenErrors.add(fingerprint);
++        return true;
+     }
+ }
+diff --git a/src/plugins/forms.ts b/src/plugins/forms.ts
+index 4c8c970..dc9e2b8 100644
+--- a/src/plugins/forms.ts
++++ b/src/plugins/forms.ts
+@@ -14,6 +14,7 @@ export class FormsPlugin extends BasePlugin {
+     private trackedForms: WeakSet<HTMLFormElement> = new WeakSet();
+     private formInteractions: Set<string> = new Set();
+     private observer: MutationObserver | null = null;
++    private observerTimer: ReturnType<typeof setTimeout> | null = null;
+     private listeners: { element: EventTarget; event: string; handler: EventListener }[] = [];
+ 
+     init(tracker: TrackerCore): void {
+@@ -24,14 +25,21 @@ export class FormsPlugin extends BasePlugin {
+         // Track existing forms
+         this.trackAllForms();
+ 
+-        // Watch for dynamically added forms
++        // Watch for dynamically added forms ΓÇö debounced to avoid O(DOM) cost on every mutation
+         if (typeof MutationObserver !== 'undefined') {
+-            this.observer = new MutationObserver(() => this.trackAllForms());
++            this.observer = new MutationObserver(() => {
++                if (this.observerTimer) clearTimeout(this.observerTimer);
++                this.observerTimer = setTimeout(() => this.trackAllForms(), 100);
++            });
+             this.observer.observe(document.body, { childList: true, subtree: true });
+         }
+     }
+ 
+     destroy(): void {
++        if (this.observerTimer) {
++            clearTimeout(this.observerTimer);
++            this.observerTimer = null;
++        }
+         if (this.observer) {
+             this.observer.disconnect();
+             this.observer = null;
+diff --git a/src/plugins/pageView.ts b/src/plugins/pageView.ts
+index f826256..013c176 100644
+--- a/src/plugins/pageView.ts
++++ b/src/plugins/pageView.ts
+@@ -6,6 +6,9 @@
+ import type { PluginName, TrackerCore } from '../types';
+ import { BasePlugin } from './base';
+ 
++/** Sentinel flag to prevent double-wrapping history methods across multiple SDK instances */
++const WRAPPED_FLAG = '__clianta_pv_wrapped__';
++
+ /**
+  * Page View Plugin - Tracks page views
+  */
+@@ -13,6 +16,7 @@ export class PageViewPlugin extends BasePlugin {
+     name: PluginName = 'pageView';
+     private originalPushState: typeof history.pushState | null = null;
+     private originalReplaceState: typeof history.replaceState | null = null;
++    private navHandler: (() => void) | null = null;
+     private popstateHandler: (() => void) | null = null;
+ 
+     init(tracker: TrackerCore): void {
+@@ -21,48 +25,65 @@ export class PageViewPlugin extends BasePlugin {
+         // Track initial page view
+         this.trackPageView();
+ 
+-        // Track SPA navigation (History API)
+-        if (typeof window !== 'undefined') {
+-            // Store originals for cleanup
++        if (typeof window === 'undefined') return;
++
++        // Only wrap history methods once ΓÇö guard against multiple SDK instances (e.g. microfrontends)
++        // wrapping them repeatedly, which would cause duplicate navigation events and broken cleanup.
++        if (!(history.pushState as any)[WRAPPED_FLAG]) {
+             this.originalPushState = history.pushState;
+             this.originalReplaceState = history.replaceState;
+ 
+-            // Intercept pushState and replaceState
+-            const self = this;
++            const originalPush = this.originalPushState;
++            const originalReplace = this.originalReplaceState;
++
+             history.pushState = function (...args) {
+-                self.originalPushState!.apply(history, args);
+-                self.trackPageView();
+-                // Notify other plugins (e.g. ScrollPlugin) about navigation
++                originalPush.apply(history, args);
++                // Dispatch event so all listening instances track the navigation
+                 window.dispatchEvent(new Event('clianta:navigation'));
+             };
++            (history.pushState as any)[WRAPPED_FLAG] = true;
+ 
+             history.replaceState = function (...args) {
+-                self.originalReplaceState!.apply(history, args);
+-                self.trackPageView();
++                originalReplace.apply(history, args);
+                 window.dispatchEvent(new Event('clianta:navigation'));
+             };
+-
+-            // Handle back/forward navigation
+-            this.popstateHandler = () => this.trackPageView();
+-            window.addEventListener('popstate', this.popstateHandler);
++            (history.replaceState as any)[WRAPPED_FLAG] = true;
+         }
++
++        // Each instance listens to the shared navigation event rather than embedding
++        // tracking directly in the pushState wrapper ΓÇö decouples tracking from wrapping.
++        this.navHandler = () => this.trackPageView();
++        window.addEventListener('clianta:navigation', this.navHandler);
++
++        // Handle back/forward navigation
++        this.popstateHandler = () => this.trackPageView();
++        window.addEventListener('popstate', this.popstateHandler);
+     }
+ 
+     destroy(): void {
+-        // Restore original history methods
++        if (typeof window !== 'undefined') {
++            if (this.navHandler) {
++                window.removeEventListener('clianta:navigation', this.navHandler);
++                this.navHandler = null;
++            }
++            if (this.popstateHandler) {
++                window.removeEventListener('popstate', this.popstateHandler);
++                this.popstateHandler = null;
++            }
++        }
++
++        // Restore original history methods only if this instance was the one that wrapped them
+         if (this.originalPushState) {
+             history.pushState = this.originalPushState;
++            delete (history.pushState as any)[WRAPPED_FLAG];
+             this.originalPushState = null;
+         }
+         if (this.originalReplaceState) {
+             history.replaceState = this.originalReplaceState;
++            delete (history.replaceState as any)[WRAPPED_FLAG];
+             this.originalReplaceState = null;
+         }
+-        // Remove popstate listener
+-        if (this.popstateHandler && typeof window !== 'undefined') {
+-            window.removeEventListener('popstate', this.popstateHandler);
+-            this.popstateHandler = null;
+-        }
++
+         super.destroy();
+     }
+ 
+diff --git a/src/react.tsx b/src/react.tsx
+index 80aa9a3..d0facc4 100644
+--- a/src/react.tsx
++++ b/src/react.tsx
+@@ -14,6 +14,7 @@ import {
+     createContext,
+     useContext,
+     useRef,
++    useCallback,
+     Component,
+     type ReactNode,
+     type ErrorInfo,
+@@ -110,7 +111,7 @@ export interface CliantaProviderProps {
+ export function CliantaProvider({ projectId, apiEndpoint, debug, config, children, onError }: CliantaProviderProps) {
+     const [tracker, setTracker] = useState<TrackerCore | null>(null);
+     const [isReady, setIsReady] = useState(false);
+-    const projectIdRef = useRef(projectId);
++    const trackerRef = useRef<TrackerCore | null>(null);
+ 
+     useEffect(() => {
+         if (!projectId) {
+@@ -118,10 +119,6 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
+             return;
+         }
+ 
+-        if (projectIdRef.current !== projectId) {
+-            projectIdRef.current = projectId;
+-        }
+-
+         try {
+             const options: CliantaConfig = {
+                 debug: debug ?? false,
+@@ -129,6 +126,7 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
+                 ...(apiEndpoint ? { apiEndpoint } : {}),
+             };
+             const instance = clianta(projectId, options);
++            trackerRef.current = instance;
+             setTracker(instance);
+             setIsReady(true);
+         } catch (error) {
+@@ -137,7 +135,8 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
+         }
+ 
+         return () => {
+-            tracker?.flush();
++            // Use ref so cleanup always flushes the live instance, not the stale closure value
++            trackerRef.current?.flush();
+             setIsReady(false);
+         };
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -174,16 +173,16 @@ export function useCliantaReady(): { isReady: boolean; tracker: TrackerCore | nu
+ 
+ /**
+  * useCliantaTrack ΓÇö Quick tracking hook
++ * Stable function reference (useCallback) ΓÇö safe to use as a dependency or pass as a prop.
+  */
+ export function useCliantaTrack() {
+     const tracker = useClianta();
+-    return (
+-        eventType: string,
+-        eventName: string,
+-        properties?: Record<string, unknown>
+-    ) => {
+-        tracker?.track(eventType, eventName, properties);
+-    };
++    return useCallback(
++        (eventType: string, eventName: string, properties?: Record<string, unknown>) => {
++            tracker?.track(eventType, eventName, properties);
++        },
++        [tracker]
++    );
+ }
+ 
+ // Re-export types for convenience
+diff --git a/src/types.ts b/src/types.ts
+index 9feb972..68fa5dd 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -107,6 +107,8 @@ export type EventType =
+     | 'error'
+     | 'performance'
+     | 'time_on_page'
++    | 'screen_view'  // used by tracker.screen()
++    | 'group'        // used by tracker.group()
+     | 'custom';
+ 
+ export interface TrackingEvent {

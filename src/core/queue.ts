@@ -25,6 +25,7 @@ export class EventQueue {
     private config: Required<QueueConfig>;
     private flushTimer: ReturnType<typeof setInterval> | null = null;
     private isFlushing = false;
+    private isOnline = true;
     /** Rate limiting: timestamps of recent events */
     private eventTimestamps: number[] = [];
     private persistMode: 'session' | 'local' | 'none';
@@ -32,6 +33,10 @@ export class EventQueue {
     private boundBeforeUnload: (() => void) | null = null;
     private boundVisibilityChange: (() => void) | null = null;
     private boundPageHide: (() => void) | null = null;
+    private boundOnline: (() => void) | null = null;
+    private boundOffline: (() => void) | null = null;
+    /** Guards against double-flush on unload (beforeunload + pagehide + visibilitychange all fire) */
+    private unloadFlushed = false;
 
     constructor(transport: Transport, config: Partial<QueueConfig> = {}) {
         this.transport = transport;
@@ -42,6 +47,7 @@ export class EventQueue {
             storageKey: config.storageKey ?? STORAGE_KEYS.EVENT_QUEUE,
         };
         this.persistMode = (config as any).persistMode || 'session';
+        this.isOnline = typeof navigator === 'undefined' || navigator.onLine;
 
         // Restore persisted queue
         this.restoreQueue();
@@ -104,7 +110,7 @@ export class EventQueue {
      * Flush the queue (send all events)
      */
     async flush(): Promise<void> {
-        if (this.isFlushing || this.queue.length === 0) {
+        if (this.isFlushing || this.queue.length === 0 || !this.isOnline) {
             return;
         }
 
@@ -139,10 +145,13 @@ export class EventQueue {
     }
 
     /**
-     * Flush synchronously using sendBeacon (for page unload)
+     * Flush synchronously using sendBeacon (for page unload).
+     * Guarded: no-ops after the first call per navigation to prevent
+     * triple-flush from beforeunload + visibilitychange + pagehide.
      */
     flushSync(): void {
-        if (this.queue.length === 0) return;
+        if (this.unloadFlushed || this.queue.length === 0) return;
+        this.unloadFlushed = true;
 
         const events = this.queue.splice(0, this.queue.length);
         logger.debug(`Sync flushing ${events.length} events via beacon`);
@@ -183,17 +192,12 @@ export class EventQueue {
             clearInterval(this.flushTimer);
             this.flushTimer = null;
         }
-        // Remove unload handlers
         if (typeof window !== 'undefined') {
-            if (this.boundBeforeUnload) {
-                window.removeEventListener('beforeunload', this.boundBeforeUnload);
-            }
-            if (this.boundVisibilityChange) {
-                window.removeEventListener('visibilitychange', this.boundVisibilityChange);
-            }
-            if (this.boundPageHide) {
-                window.removeEventListener('pagehide', this.boundPageHide);
-            }
+            if (this.boundBeforeUnload) window.removeEventListener('beforeunload', this.boundBeforeUnload);
+            if (this.boundVisibilityChange) window.removeEventListener('visibilitychange', this.boundVisibilityChange);
+            if (this.boundPageHide) window.removeEventListener('pagehide', this.boundPageHide);
+            if (this.boundOnline) window.removeEventListener('online', this.boundOnline);
+            if (this.boundOffline) window.removeEventListener('offline', this.boundOffline);
         }
     }
 
@@ -211,26 +215,40 @@ export class EventQueue {
     }
 
     /**
-     * Setup page unload handlers
+     * Setup page unload handlers and online/offline listeners
      */
     private setupUnloadHandlers(): void {
         if (typeof window === 'undefined') return;
 
-        // Flush on page unload
+        // All three unload events share the same guarded flushSync()
         this.boundBeforeUnload = () => this.flushSync();
         window.addEventListener('beforeunload', this.boundBeforeUnload);
 
-        // Flush when page becomes hidden
         this.boundVisibilityChange = () => {
             if (document.visibilityState === 'hidden') {
                 this.flushSync();
+            } else {
+                // Page became visible again (e.g. tab switch back) — reset guard
+                this.unloadFlushed = false;
             }
         };
         window.addEventListener('visibilitychange', this.boundVisibilityChange);
 
-        // Flush on page hide (iOS Safari)
         this.boundPageHide = () => this.flushSync();
         window.addEventListener('pagehide', this.boundPageHide);
+
+        // Pause queue when offline, resume + flush when back online
+        this.boundOnline = () => {
+            logger.info('Connection restored — flushing queued events');
+            this.isOnline = true;
+            this.flush();
+        };
+        this.boundOffline = () => {
+            logger.warn('Connection lost — pausing event queue');
+            this.isOnline = false;
+        };
+        window.addEventListener('online', this.boundOnline);
+        window.addEventListener('offline', this.boundOffline);
     }
 
     /**

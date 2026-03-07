@@ -107,6 +107,8 @@ export type EventType =
     | 'error'
     | 'performance'
     | 'time_on_page'
+    | 'screen_view'  // used by tracker.screen()
+    | 'group'        // used by tracker.group()
     | 'custom';
 
 export interface TrackingEvent {
