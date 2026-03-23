@@ -197,10 +197,18 @@ export function resetIds(useCookies = false): void {
 // URL UTILITIES
 // ============================================
 
+export interface UTMData {
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    utmTerm?: string;
+    utmContent?: string;
+}
+
 /**
  * Extract UTM parameters from URL
  */
-export function getUTMParams(): Record<string, string | undefined> {
+export function getUTMParams(): UTMData {
     if (typeof window === 'undefined') return {};
 
     try {

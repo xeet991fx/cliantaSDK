@@ -89,6 +89,7 @@ export class Tracker implements TrackerCore {
         this.queue = new EventQueue(this.transport, {
             batchSize: this.config.batchSize,
             flushInterval: this.config.flushInterval,
+            persistMode: this.config.persistMode,
         });
 
         // Get or create visitor and session IDs based on mode
@@ -221,10 +222,13 @@ export class Tracker implements TrackerCore {
             return;
         }
 
+        const utmParams = getUTMParams();
         const event: TrackingEvent = {
             workspaceId: this.workspaceId,
             visitorId: this.visitorId,
             sessionId: this.sessionId,
+            contactId: this.contactId ?? undefined,
+            groupId: this.groupId ?? undefined,
             eventType: eventType as EventType,
             eventName,
             url: typeof window !== 'undefined' ? window.location.href : '',
@@ -235,20 +239,14 @@ export class Tracker implements TrackerCore {
                 websiteDomain: typeof window !== 'undefined' ? window.location.hostname : undefined,
             },
             device: getDeviceInfo(),
-            ...getUTMParams(),
+            utmSource: utmParams.utmSource,
+            utmMedium: utmParams.utmMedium,
+            utmCampaign: utmParams.utmCampaign,
+            utmTerm: utmParams.utmTerm,
+            utmContent: utmParams.utmContent,
             timestamp: new Date().toISOString(),
             sdkVersion: SDK_VERSION,
         };
-
-        // Attach contactId if known (from a prior identify() call)
-        if (this.contactId) {
-            (event as any).contactId = this.contactId;
-        }
-
-        // Attach groupId if known (from a prior group() call)
-        if (this.groupId) {
-            (event as any).groupId = this.groupId;
-        }
 
         // Validate event against registered schema (debug mode only)
         this.validateEventSchema(eventType as string, properties);

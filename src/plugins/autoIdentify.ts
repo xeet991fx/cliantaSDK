@@ -69,7 +69,7 @@ const STORAGE_KEY_PATTERNS = [
 ];
 
 /** JWT/user object fields containing email */
-const EMAIL_CLAIMS = ['email', 'sub', 'preferred_username', 'user_email', 'mail', 'emailAddress', 'e_mail'];
+const EMAIL_CLAIMS = ['email', 'preferred_username', 'user_email', 'mail', 'emailAddress', 'e_mail'];
 /** Full name fields */
 const NAME_CLAIMS = ['name', 'full_name', 'display_name', 'displayName'];
 /** First name fields */

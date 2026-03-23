@@ -45,8 +45,9 @@ export class EventQueue {
             flushInterval: config.flushInterval ?? 5000,
             maxQueueSize: config.maxQueueSize ?? MAX_QUEUE_SIZE,
             storageKey: config.storageKey ?? STORAGE_KEYS.EVENT_QUEUE,
+            persistMode: config.persistMode ?? 'session',
         };
-        this.persistMode = (config as any).persistMode || 'session';
+        this.persistMode = this.config.persistMode;
         this.isOnline = typeof navigator === 'undefined' || navigator.onLine;
 
         // Restore persisted queue
@@ -130,9 +131,11 @@ export class EventQueue {
             const result = await this.transport.sendEvents(events);
 
             if (!result.success) {
-                // Re-queue events on failure (at the front)
+                // Re-queue events on failure (at the front), capped at maxQueueSize
                 logger.warn('Flush failed, re-queuing events');
-                this.queue.unshift(...events);
+                const availableSpace = this.config.maxQueueSize - this.queue.length;
+                const eventsToRequeue = events.slice(0, Math.max(0, availableSpace));
+                this.queue.unshift(...eventsToRequeue);
                 this.persistQueue(this.queue);
             } else {
                 logger.debug('Flush successful');

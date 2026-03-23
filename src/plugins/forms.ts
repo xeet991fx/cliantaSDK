@@ -70,7 +70,7 @@ export class FormsPlugin extends BasePlugin {
         if (this.trackedForms.has(form)) return;
         this.trackedForms.add(form);
 
-        const formId = form.id || form.name || `form-${Math.random().toString(36).substr(2, 9)}`;
+        const formId = form.id || form.name || `form-${Math.random().toString(36).substring(2, 11)}`;
 
         // Track form view
         this.track('form_view', 'Form Viewed', {

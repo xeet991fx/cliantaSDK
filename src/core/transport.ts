@@ -48,8 +48,9 @@ export class Transport {
     /**
      * Send identify request.
      * Returns contactId from the server response so the Tracker can store it.
+     * Retries on 5xx with exponential backoff (same policy as sendEvents).
      */
-    async sendIdentify(data: IdentifyPayload): Promise<TransportResult> {
+    async sendIdentify(data: IdentifyPayload, attempt = 1): Promise<TransportResult> {
         const url = `${this.config.apiEndpoint}/api/public/track/identify`;
         try {
             const response = await this.fetchWithTimeout(url, {
@@ -70,14 +71,26 @@ export class Transport {
                 };
             }
 
-            if (response.status >= 500) {
-                logger.warn(`Identify server error (${response.status})`);
-            } else {
-                logger.error(`Identify failed with status ${response.status}:`, body.message);
+            // Server error — retry with exponential backoff
+            if (response.status >= 500 && attempt < this.config.maxRetries) {
+                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
+                logger.warn(`Identify server error (${response.status}), retrying in ${backoff}ms...`);
+                await this.delay(backoff);
+                return this.sendIdentify(data, attempt + 1);
             }
+
+            logger.error(`Identify failed with status ${response.status}:`, body.message);
             return { success: false, status: response.status };
         } catch (error) {
-            logger.error('Identify request failed:', error);
+            // Network error — retry if still online
+            const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+            if (isOnline && attempt < this.config.maxRetries) {
+                const backoff = this.config.retryDelay * Math.pow(2, attempt - 1);
+                logger.warn(`Identify network error, retrying in ${backoff}ms (${attempt}/${this.config.maxRetries})...`);
+                await this.delay(backoff);
+                return this.sendIdentify(data, attempt + 1);
+            }
+            logger.error('Identify request failed after retries:', error);
             return { success: false, error: error as Error };
         }
     }

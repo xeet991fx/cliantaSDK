@@ -121,6 +121,12 @@ export interface TrackingEvent {
     /** Session identifier */
     sessionId: string;
 
+    /** CRM contact ID (set after a successful identify() call) */
+    contactId?: string;
+
+    /** Group ID (set after a successful group() call) */
+    groupId?: string;
+
     /** Event type category */
     eventType: EventType;
 
@@ -139,8 +145,12 @@ export interface TrackingEvent {
     /** Device information */
     device: DeviceInfo;
 
-    /** UTM parameters */
-    utm?: UTMParams;
+    /** UTM parameters (flat, root-level — matches backend schema) */
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    utmTerm?: string;
+    utmContent?: string;
 
     /** ISO timestamp */
     timestamp: string;
@@ -293,6 +303,12 @@ export interface TrackerCore {
     /** Check if the SDK is fully initialized and ready */
     isReady(): boolean;
 
+    /** Register a schema for event validation (active in debug mode) */
+    registerEventSchema(
+        eventType: string,
+        schema: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'>
+    ): void;
+
     // Public CRM methods (no API key required, secured by domain whitelist)
 
     /** Create or update a contact by email (upsert) */
@@ -342,6 +358,7 @@ export interface QueueConfig {
     flushInterval: number;
     maxQueueSize?: number;
     storageKey?: string;
+    persistMode?: 'session' | 'local' | 'none';
 }
 
 // ============================================

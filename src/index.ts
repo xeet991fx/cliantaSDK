@@ -40,8 +40,10 @@ export type { ConsentChangeCallback, ConsentManagerConfig, StoredConsent } from 
 // Export SDK version
 export { SDK_VERSION } from './core/config';
 
-// Export Tracker and Consent classes for direct use
+// Export Tracker, Consent, and CRM classes for direct use
 export { Tracker, ConsentManager };
+export { CRMClient } from './core/crm';
+export type { InboundEventPayload, InboundEventResult, InboundEventType } from './core/crm';
 
 // Global instance cache
 let globalInstance: Tracker | null = null;

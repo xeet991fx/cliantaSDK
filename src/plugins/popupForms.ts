@@ -7,6 +7,8 @@
 
 import type { PluginName, TrackerCore } from '../types';
 import { BasePlugin } from './base';
+import { getLocalStorage, setLocalStorage, getSessionStorage, setSessionStorage } from '../utils';
+import { logger } from '../core/logger';
 
 interface LeadFormField {
     name: string;
@@ -89,26 +91,22 @@ export class PopupFormsPlugin extends BasePlugin {
     }
 
     private loadShownForms(): void {
-        try {
-            const stored = localStorage.getItem('clianta_shown_forms');
-            if (stored) {
+        const stored = getLocalStorage('clianta_shown_forms');
+        if (stored) {
+            try {
                 const data = JSON.parse(stored);
                 this.shownForms = new Set(data.forms || []);
+            } catch {
+                // Ignore parse errors
             }
-        } catch (e) {
-            // Ignore storage errors
         }
     }
 
     private saveShownForms(): void {
-        try {
-            localStorage.setItem('clianta_shown_forms', JSON.stringify({
-                forms: Array.from(this.shownForms),
-                timestamp: Date.now(),
-            }));
-        } catch (e) {
-            // Ignore storage errors
-        }
+        setLocalStorage('clianta_shown_forms', JSON.stringify({
+            forms: Array.from(this.shownForms),
+            timestamp: Date.now(),
+        }));
     }
 
     private async fetchForms(): Promise<void> {
@@ -133,7 +131,7 @@ export class PopupFormsPlugin extends BasePlugin {
                 );
             }
         } catch (error) {
-            console.error('[Clianta] Failed to fetch forms:', error);
+            logger.error('Failed to fetch popup forms:', error);
         }
     }
 
@@ -143,7 +141,7 @@ export class PopupFormsPlugin extends BasePlugin {
             if (this.shownForms.has(form._id)) return false;
         } else if (form.showFrequency === 'once_per_session') {
             const sessionKey = `clianta_form_${form._id}_shown`;
-            if (sessionStorage.getItem(sessionKey)) return false;
+            if (getSessionStorage(sessionKey)) return false;
         }
         return true;
     }
@@ -223,7 +221,7 @@ export class PopupFormsPlugin extends BasePlugin {
         // Mark as shown
         this.shownForms.add(form._id);
         this.saveShownForms();
-        sessionStorage.setItem(`clianta_form_${form._id}_shown`, 'true');
+        setSessionStorage(`clianta_form_${form._id}_shown`, 'true');
 
         // Track view
         await this.trackFormView(form._id);
@@ -580,15 +578,15 @@ export class PopupFormsPlugin extends BasePlugin {
                         const redirect = new URL(form.redirectUrl, window.location.origin);
                         const isSameOrigin = redirect.origin === window.location.origin;
                         const isSafeProtocol = redirect.protocol === 'https:' || redirect.protocol === 'http:';
-                        if (isSameOrigin || isSafeProtocol) {
+                        if (isSameOrigin && isSafeProtocol) {
                             setTimeout(() => {
                                 window.location.href = redirect.href;
                             }, 1500);
                         } else {
-                            console.warn('[Clianta] Blocked unsafe redirect URL:', form.redirectUrl);
+                            logger.warn('Blocked unsafe redirect URL:', form.redirectUrl);
                         }
                     } catch {
-                        console.warn('[Clianta] Invalid redirect URL:', form.redirectUrl);
+                        logger.warn('Invalid redirect URL:', form.redirectUrl);
                     }
                 }
 
@@ -601,7 +599,7 @@ export class PopupFormsPlugin extends BasePlugin {
                 }, 2000);
             }
         } catch (error) {
-            console.error('[Clianta] Form submit error:', error);
+            logger.error('Form submit error:', error);
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = form.submitButtonText || 'Subscribe';
