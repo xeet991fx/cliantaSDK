@@ -181,7 +181,7 @@ describe('ScrollPlugin', () => {
     });
 
     describe('Short page handling', () => {
-        it('should not track on pages with no scrollable content', () => {
+        it('should emit all milestones at once for pages with no scrollable content', () => {
             (document.documentElement as any).scrollHeight = 800; // Same as innerHeight
 
             plugin.init(mockTracker);
@@ -192,7 +192,16 @@ describe('ScrollPlugin', () => {
             if (scrollHandler) {
                 scrollHandler();
                 vi.advanceTimersByTime(200);
-                expect(mockTracker.track).not.toHaveBeenCalled();
+
+                // Pre-fix the plugin emitted nothing for short pages, so the
+                // analytics dashboard treated every short page as a 0%-scroll
+                // bounce. New contract: emit all four milestones once with
+                // shortPage:true so the visitor's full-page-view is captured.
+                const calls = (mockTracker.track as ReturnType<typeof vi.fn>).mock.calls
+                    .filter((c) => c[0] === 'scroll_depth');
+                expect(calls).toHaveLength(4);
+                expect(calls.every((c) => c[2].shortPage === true)).toBe(true);
+                expect(calls.map((c) => c[2].depth).sort((a, b) => a - b)).toEqual([25, 50, 75, 100]);
             }
         });
     });

@@ -271,13 +271,24 @@ export class Tracker implements TrackerCore {
     }
 
     /**
-     * Track a page view
+     * Track a page view manually.
+     *
+     * If `name` is omitted, the event name defaults to `document.title` (or the
+     * current pathname as a fallback). This matches what the auto pageView
+     * plugin does, so manual and auto-tracked page views look identical in
+     * analytics.
      */
     page(name?: string, properties: Record<string, unknown> = {}): void {
-        const pageName = name || (typeof document !== 'undefined' ? document.title : 'Page View');
-        this.track('page_view', pageName, {
+        let eventName = name;
+        if (!eventName) {
+            const title = typeof document !== 'undefined' ? document.title?.trim() : '';
+            const path = typeof window !== 'undefined' ? window.location.pathname : '';
+            eventName = title || path || 'Page Viewed';
+        }
+        this.track('page_view', eventName, {
             ...properties,
             path: typeof window !== 'undefined' ? window.location.pathname : '',
+            title: typeof document !== 'undefined' ? document.title : undefined,
         });
     }
 
@@ -590,6 +601,7 @@ export class Tracker implements TrackerCore {
         this.visitorId = this.createVisitorId();
         this.sessionId = this.createSessionId();
         this.contactId = null;
+        this.groupId = null;
         this.pendingIdentify = null;
         this.queue.clear();
     }

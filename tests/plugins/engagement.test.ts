@@ -128,7 +128,7 @@ describe('EngagementPlugin', () => {
             }
         });
 
-        it('should reset engagement after 30 seconds of inactivity', () => {
+        it('should not re-fire engagement after long inactivity (once-per-page contract)', () => {
             plugin.init(mockTracker);
 
             const mousemoveHandler = (document.addEventListener as ReturnType<typeof vi.fn>).mock.calls
@@ -139,35 +139,33 @@ describe('EngagementPlugin', () => {
                 mousemoveHandler();
                 expect(mockTracker.track).toHaveBeenCalledTimes(1);
 
-                // Advance 30 seconds
-                vi.advanceTimersByTime(30001);
+                // Advance 30+ seconds
+                vi.advanceTimersByTime(60_000);
 
-                // Should be able to track engagement again
+                // Subsequent interactions should NOT produce more engagement events.
+                // (Pre-fix: 30s of idle would re-arm the event and flood the queue.)
                 mousemoveHandler();
-                expect(mockTracker.track).toHaveBeenCalledTimes(2);
+                mousemoveHandler();
+                const engagementCalls = (mockTracker.track as ReturnType<typeof vi.fn>).mock.calls
+                    .filter((call) => call[0] === 'engagement');
+                expect(engagementCalls).toHaveLength(1);
             }
         });
     });
 
     describe('time on page tracking', () => {
-        it('should track time on page when visibility changes to hidden', () => {
+        it('should track cumulative time on page on beforeunload', () => {
             plugin.init(mockTracker);
 
-            // Advance time
+            // Spend 5 seconds on the page
             vi.advanceTimersByTime(5000);
 
-            // Get visibility handler
-            const visibilityHandler = (document.addEventListener as ReturnType<typeof vi.fn>).mock.calls
-                .find((call) => call[0] === 'visibilitychange')?.[1];
+            // Find and invoke the unload handler
+            const unloadHandler = (window.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+                .find((call) => call[0] === 'beforeunload')?.[1];
 
-            if (visibilityHandler) {
-                // Mock hidden visibility
-                Object.defineProperty(document, 'visibilityState', {
-                    value: 'hidden',
-                    writable: true,
-                });
-
-                visibilityHandler();
+            if (unloadHandler) {
+                unloadHandler();
 
                 expect(mockTracker.track).toHaveBeenCalledWith(
                     'time_on_page',
@@ -177,6 +175,47 @@ describe('EngagementPlugin', () => {
                         engaged: expect.any(Boolean),
                     })
                 );
+            }
+        });
+
+        it('should fire time_on_page only once per page lifecycle', () => {
+            plugin.init(mockTracker);
+            vi.advanceTimersByTime(2000);
+
+            const unloadHandler = (window.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+                .find((call) => call[0] === 'beforeunload')?.[1];
+
+            if (unloadHandler) {
+                unloadHandler();
+                unloadHandler();
+                unloadHandler();
+
+                const timeCalls = (mockTracker.track as ReturnType<typeof vi.fn>).mock.calls
+                    .filter((call) => call[0] === 'time_on_page');
+                expect(timeCalls).toHaveLength(1);
+            }
+        });
+
+        it('should NOT flush time_on_page on visibility:hidden — only pause the timer', () => {
+            plugin.init(mockTracker);
+            vi.advanceTimersByTime(3000);
+
+            const visibilityHandler = (document.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+                .find((call) => call[0] === 'visibilitychange')?.[1];
+
+            if (visibilityHandler) {
+                Object.defineProperty(document, 'visibilityState', {
+                    value: 'hidden',
+                    writable: true,
+                });
+                visibilityHandler();
+
+                const timeCalls = (mockTracker.track as ReturnType<typeof vi.fn>).mock.calls
+                    .filter((call) => call[0] === 'time_on_page');
+                // visibility:hidden should NOT emit time_on_page; that's reserved
+                // for actual page unload. (Pre-fix: it would emit, then re-emit
+                // on visibility:visible → hidden cycles.)
+                expect(timeCalls).toHaveLength(0);
             }
         });
     });

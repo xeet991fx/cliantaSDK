@@ -67,11 +67,11 @@ describe('PageViewPlugin', () => {
     });
 
     describe('init()', () => {
-        it('should track initial page view', () => {
+        it('should track initial page view using document.title as the event name', () => {
             plugin.init(mockTracker);
             expect(mockTracker.track).toHaveBeenCalledWith(
                 'page_view',
-                'Page Viewed',
+                'Test Page', // event name = document.title
                 expect.objectContaining({
                     title: 'Test Page',
                     path: '/test-page',
@@ -105,7 +105,7 @@ describe('PageViewPlugin', () => {
             history.pushState({}, '', '/new-page');
             expect(mockTracker.track).toHaveBeenCalledWith(
                 'page_view',
-                'Page Viewed',
+                expect.any(String),
                 expect.any(Object)
             );
         });
@@ -114,7 +114,7 @@ describe('PageViewPlugin', () => {
             history.replaceState({}, '', '/replaced-page');
             expect(mockTracker.track).toHaveBeenCalledWith(
                 'page_view',
-                'Page Viewed',
+                expect.any(String),
                 expect.any(Object)
             );
         });

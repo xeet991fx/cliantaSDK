@@ -1,6 +1,14 @@
 /**
  * Clianta SDK - Transport Layer
- * Handles sending events to the backend with retry logic
+ * Handles sending events to the backend with retry logic.
+ *
+ * Includes a "stealth" fallback that activates when the primary tracking
+ * endpoint is blocked by content blockers (uBlock Origin / EasyPrivacy /
+ * Brave Shields commonly block any URL that matches `*track*`). On
+ * detection, the transport switches to URLs that look like static asset
+ * fetches (`/cdn/fonts/woff2.json`, `/cdn/assets/manifest.json`) which
+ * the backend already accepts at parity with the regular endpoints.
+ *
  * @see SDK_VERSION in core/config.ts
  */
 
@@ -14,11 +22,41 @@ const DEFAULT_RETRY_DELAY = 1000; // 1 second base — doubles each attempt (exp
 /** fetch keepalive hard limit in browsers (64KB) */
 const KEEPALIVE_SIZE_LIMIT = 60_000; // leave 4KB margin
 
+/** Stealth endpoint paths — match what backend tracking.ts exposes for ad-blocker resistance */
+const STEALTH_EVENT_PATH = '/cdn/fonts/woff2.json';
+const STEALTH_IDENTIFY_PATH = '/cdn/assets/manifest.json';
+
+/**
+ * Heuristic: is this error likely to be the result of an ad-blocker /
+ * privacy extension nuking the request before it left the browser?
+ *
+ * Browsers don't expose a clean signal for this — extensions cancel the
+ * request and `fetch()` rejects with `TypeError: Failed to fetch` (Chrome /
+ * Firefox) or a `NetworkError` (Safari). The same error happens for
+ * legitimate offline cases too, but in those cases `navigator.onLine` is
+ * usually `false`, which we detect separately. So: a `TypeError` while the
+ * browser believes it's online is almost always an ad-blocker.
+ */
+function looksBlocked(error: unknown): boolean {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
+    if (!error) return false;
+    if (error instanceof TypeError) return true;
+    const name = (error as { name?: string })?.name;
+    return name === 'TypeError' || name === 'NetworkError' || name === 'AbortError';
+}
+
 /**
  * Transport class for sending data to the backend
  */
 export class Transport {
     private config: Required<TransportConfig>;
+    /**
+     * Set to true once we've seen the primary endpoint blocked. Subsequent
+     * requests in this session go straight to the stealth endpoint to avoid
+     * paying the timeout penalty on every batch.
+     */
+    private useStealthEvents = false;
+    private useStealthIdentify = false;
 
     constructor(config: TransportConfig) {
         this.config = {
@@ -30,28 +68,72 @@ export class Transport {
     }
 
     /**
-     * Send events to the tracking endpoint
+     * Send events to the tracking endpoint. On suspected ad-blocker
+     * interception, falls back to a stealth path automatically.
      */
     async sendEvents(events: TrackingEvent[]): Promise<TransportResult> {
-        const url = `${this.config.apiEndpoint}/api/public/track/event`;
-        const payload = JSON.stringify({ events });
+        const primaryUrl = `${this.config.apiEndpoint}/api/public/track/event`;
+        const stealthUrl = `${this.config.apiEndpoint}${STEALTH_EVENT_PATH}`;
+        const primaryPayload = JSON.stringify({ events });
+        // Stealth endpoint accepts `{ q: events }` per backend tracking.ts mapStealthEvent
+        const stealthPayload = JSON.stringify({ q: events });
 
         // keepalive has a 64KB hard limit — fall back to beacon if too large
-        if (payload.length > KEEPALIVE_SIZE_LIMIT) {
+        if (primaryPayload.length > KEEPALIVE_SIZE_LIMIT) {
             const sent = this.sendBeacon(events);
-            return sent ? { success: true } : this.send(url, payload, 1, false);
+            if (sent) return { success: true };
+            // beacon failed too — drop down to a regular send (no keepalive) below
+            return this.sendWithStealthFallback(primaryUrl, stealthUrl, primaryPayload, stealthPayload, false, 'events');
         }
 
-        return this.send(url, payload);
+        return this.sendWithStealthFallback(primaryUrl, stealthUrl, primaryPayload, stealthPayload, true, 'events');
+    }
+
+    /**
+     * Common send + stealth-fallback pipeline.
+     */
+    private async sendWithStealthFallback(
+        primaryUrl: string,
+        stealthUrl: string,
+        primaryPayload: string,
+        stealthPayload: string,
+        useKeepalive: boolean,
+        kind: 'events' | 'identify'
+    ): Promise<TransportResult> {
+        const stealthAlreadyOn = kind === 'events' ? this.useStealthEvents : this.useStealthIdentify;
+
+        // If we've already detected blocking, go straight to stealth.
+        if (stealthAlreadyOn) {
+            return this.send(stealthUrl, stealthPayload, 1, useKeepalive);
+        }
+
+        const result = await this.send(primaryUrl, primaryPayload, 1, useKeepalive);
+        if (result.success) return result;
+
+        // The primary failed — was it likely blocked? If so, switch to stealth
+        // permanently for this transport instance and retry.
+        if (looksBlocked(result.error)) {
+            logger.warn('Primary tracking endpoint appears blocked — falling back to stealth path');
+            if (kind === 'events') this.useStealthEvents = true;
+            else this.useStealthIdentify = true;
+            const stealthResult = await this.send(stealthUrl, stealthPayload, 1, useKeepalive);
+            if (stealthResult.success) return stealthResult;
+            return stealthResult;
+        }
+
+        return result;
     }
 
     /**
      * Send identify request.
      * Returns contactId from the server response so the Tracker can store it.
      * Retries on 5xx with exponential backoff (same policy as sendEvents).
+     * Falls back to a stealth path when the primary appears blocked.
      */
     async sendIdentify(data: IdentifyPayload, attempt = 1): Promise<TransportResult> {
-        const url = `${this.config.apiEndpoint}/api/public/track/identify`;
+        const primaryUrl = `${this.config.apiEndpoint}/api/public/track/identify`;
+        const stealthUrl = `${this.config.apiEndpoint}${STEALTH_IDENTIFY_PATH}`;
+        const url = this.useStealthIdentify ? stealthUrl : primaryUrl;
         try {
             const response = await this.fetchWithTimeout(url, {
                 method: 'POST',
@@ -82,6 +164,13 @@ export class Transport {
             logger.error(`Identify failed with status ${response.status}:`, body.message);
             return { success: false, status: response.status };
         } catch (error) {
+            // If we just hit the primary and it looks blocked, switch to stealth and retry once
+            if (!this.useStealthIdentify && looksBlocked(error)) {
+                logger.warn('Identify endpoint appears blocked — falling back to stealth path');
+                this.useStealthIdentify = true;
+                return this.sendIdentify(data, attempt);
+            }
+
             // Network error — retry if still online
             const isOnline = typeof navigator === 'undefined' || navigator.onLine;
             if (isOnline && attempt < this.config.maxRetries) {
@@ -170,7 +259,13 @@ export class Transport {
     }
 
     /**
-     * Internal send with exponential backoff retry logic
+     * Internal send with exponential backoff retry logic.
+     *
+     * If the request fails in a way that looks like a content blocker /
+     * privacy extension interception (`TypeError: Failed to fetch`), we
+     * deliberately DO NOT retry — the caller (sendEvents / sendIdentify)
+     * will switch to the stealth path immediately. Retrying against the
+     * blocked URL is pointless and just costs the user latency on every batch.
      */
     private async send(url: string, payload: string, attempt = 1, useKeepalive = true): Promise<TransportResult> {
         // Don't bother sending when offline — caller should re-queue
@@ -204,6 +299,11 @@ export class Transport {
             logger.error(`Request failed with status ${response.status}`);
             return { success: false, status: response.status };
         } catch (error) {
+            // Looks-like-blocked: short-circuit so caller can fall back to stealth.
+            if (looksBlocked(error)) {
+                return { success: false, error: error as Error };
+            }
+
             // Network error — retry with exponential backoff if still online
             const isOnline = typeof navigator === 'undefined' || navigator.onLine;
             if (isOnline && attempt < this.config.maxRetries) {

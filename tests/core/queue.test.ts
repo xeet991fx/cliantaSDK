@@ -57,6 +57,10 @@ describe('EventQueue', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         localStorageMock.clear();
+        // Also clear sessionStorage — auto-flush from a previous test can
+        // leave persisted events behind that would otherwise be restored
+        // into the next test's queue (off-by-N count failures).
+        sessionStorageMock.clear();
         transport = new Transport({ apiEndpoint: 'https://api.test.com' });
         queue = new EventQueue(transport, { batchSize: 5, flushInterval: 10000 });
     });

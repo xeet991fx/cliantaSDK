@@ -5,8 +5,8 @@
 
 import type { CliantaConfig, PluginName } from '../types';
 
-/** SDK Version */
-export const SDK_VERSION = '1.7.2';
+/** SDK Version (kept in sync with package.json) */
+export const SDK_VERSION = '1.8.0';
 
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
@@ -98,6 +98,8 @@ export const DEFAULT_CONFIG: Required<CliantaConfig> = {
     useCookies: false,
     cookielessMode: false,
     persistMode: 'session',
+    autoIdentifyMode: 'auto',
+    autoGroupMode: 'auto',
 };
 
 /** Storage keys */

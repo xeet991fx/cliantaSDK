@@ -1,23 +1,45 @@
 /**
- * Clianta SDK - Auto-Identify Plugin (Production)
+ * Clianta SDK - Auto-Identify Plugin
  *
- * Automatically detects logged-in users across ANY auth system:
- *   - Window globals: Clerk, Firebase, Auth0, Supabase, __clianta_user
- *   - JWT tokens in cookies (decoded client-side)
- *   - JSON/JWT in localStorage & sessionStorage (guarded recursive deep-scan)
- *   - Real-time storage change detection via `storage` event
- *   - NextAuth session probing (only when NextAuth signals detected)
+ * Detects logged-in users and calls `tracker.identify()` automatically so
+ * the SDK consumer never has to instrument their login flow.
  *
- * Production safeguards:
- *   - No monkey-patching of window.fetch or XMLHttpRequest
- *   - Size-limited storage scanning (skips values > 50KB)
- *   - Depth & key-count limited recursion (max 4 levels, 20 keys/level)
- *   - Proper email regex validation
- *   - Exponential backoff polling (2s → 5s → 10s → 30s)
- *   - Zero console errors from probing
+ * MODES (configurable via `CliantaConfig.autoIdentifyMode`):
  *
- * Works universally: Next.js, Vite, CRA, Nuxt, SvelteKit, Remix,
- * Astro, plain HTML, Zustand, Redux, Pinia, MobX, or any custom auth.
+ *   'auto'       — DEFAULT. Provider globals + JWT-only scan in cookies
+ *                  and storage, gated by five safeguards (below) that
+ *                  minimise the "wrong email" class of false positives.
+ *                  This is the right default for the "drop in the SDK and
+ *                  forget about it" promise.
+ *
+ *   'providers'  — Provider globals only. Zero false positives, lower
+ *                  coverage. Recommended when you can guarantee a
+ *                  recognised auth provider (Clerk / Firebase / NextAuth /
+ *                  Auth0 / Supabase / Google GIS / MSAL / Cognito /
+ *                  Keycloak) and you want belt-and-braces strictness.
+ *
+ *   'aggressive' — `'auto'` PLUS plain-JSON deep scan of cookies and
+ *                  storage (the old < 1.8.0 default). Highest coverage,
+ *                  more false-positive prone. Use only when your app
+ *                  stores the user object as plain JSON without a JWT.
+ *
+ *   'off'        — Disables auto-identify entirely.
+ *
+ * Five safeguards built into 'auto' mode:
+ *
+ *   1. JWT freshness  — only use tokens whose `exp` is in the future and
+ *                       `iat` is within the last 30 days.
+ *   2. Third-party SDK blocklist — skip keys belonging to Intercom,
+ *                       FullStory, HubSpot, Drift, Segment, Pendo,
+ *                       Userpilot, Mixpanel, Amplitude, etc.
+ *   3. Domain-match preference — prefer email whose domain matches the
+ *                       page hostname over emails from third-party widgets.
+ *   4. Sticky identification — cache the identified email in localStorage
+ *                       so once we've found the right user we keep using
+ *                       them across reloads.
+ *   5. Auto-logout    — when an auth-shaped storage key gets removed or
+ *                       set to a falsy value, fire `tracker.reset()` so
+ *                       the next user on the same browser starts fresh.
  *
  * @see SDK_VERSION in core/config.ts
  */
@@ -29,7 +51,7 @@ import { BasePlugin } from './base';
 // Constants
 // ────────────────────────────────────────────────
 
-/** Max recursion depth for JSON scanning */
+/** Max recursion depth for JSON scanning (aggressive mode only) */
 const MAX_SCAN_DEPTH = 4;
 /** Max object keys to inspect per recursion level */
 const MAX_KEYS_PER_LEVEL = 20;
@@ -39,65 +61,197 @@ const MAX_STORAGE_VALUE_SIZE = 50_000;
 /** Proper email regex — must have user@domain.tld (2+ char TLD) */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** localStorage key the plugin uses to remember the identified email across reloads. */
+const STICKY_EMAIL_KEY = 'clianta_idm';
+/** localStorage key the plugin uses to remember which storage entry produced that email. */
+const STICKY_SOURCE_KEY = 'clianta_idm_src';
+/** localStorage key the plugin uses to remember the identified group across reloads. */
+const STICKY_GROUP_ID_KEY = 'clianta_grp_id';
+/** localStorage key the plugin uses to remember the identified group name across reloads. */
+const STICKY_GROUP_NAME_KEY = 'clianta_grp_name';
+
+/** JWT/user object fields containing email */
+const EMAIL_CLAIMS = ['email', 'preferred_username', 'user_email', 'mail', 'emailAddress', 'e_mail'];
+const NAME_CLAIMS = ['name', 'full_name', 'display_name', 'displayName'];
+const FIRST_NAME_CLAIMS = ['given_name', 'first_name', 'firstName', 'fname'];
+const LAST_NAME_CLAIMS = ['family_name', 'last_name', 'lastName', 'lname'];
+
+/** Rich-trait claim keys we lift out of JWTs / provider objects */
+const AVATAR_CLAIMS = ['picture', 'avatar', 'avatar_url', 'avatarUrl', 'image', 'imageUrl', 'image_url', 'profile_picture', 'profilePicture'];
+const ROLE_CLAIMS = ['role', 'roles', 'user_role', 'userRole'];
+const PLAN_CLAIMS = ['plan', 'tier', 'subscription', 'subscription_tier', 'subscriptionTier', 'subscription_plan', 'subscriptionPlan'];
+const LOCALE_CLAIMS = ['locale', 'language', 'lang'];
+
+/** Claims we explicitly know how to handle — not duplicated into customFields. */
+const STANDARD_JWT_CLAIMS = new Set([
+    // RFC 7519 registered claims
+    'iss', 'sub', 'aud', 'exp', 'iat', 'nbf', 'jti', 'azp', 'scope', 'scopes',
+    // What we already extract above
+    ...EMAIL_CLAIMS, ...NAME_CLAIMS, ...FIRST_NAME_CLAIMS, ...LAST_NAME_CLAIMS,
+    ...AVATAR_CLAIMS, ...ROLE_CLAIMS, ...PLAN_CLAIMS, ...LOCALE_CLAIMS,
+    // Group claims (handled separately)
+    'org', 'org_id', 'orgId', 'organization', 'organization_id', 'organizationId',
+    'organization_name', 'organizationName',
+    'tenant', 'tenant_id', 'tenantId', 'tenant_name', 'tenantName',
+    'account', 'account_id', 'accountId', 'account_name', 'accountName',
+    'workspace', 'workspace_id', 'workspaceId', 'workspace_name', 'workspaceName',
+    'company', 'company_id', 'companyId', 'company_name', 'companyName',
+    // Provider-specific noise
+    'primaryEmailAddress', 'emailAddresses', 'organizationMemberships',
+    'username', 'user_id', 'userId', 'id', '_id',
+]);
+
+/**
+ * Group ID claim keys — order matters: more-specific names first so we
+ * pick `organization_id` over plain `id` when both are present.
+ */
+const GROUP_ID_CLAIMS = [
+    'organization_id', 'organizationId',
+    'tenant_id', 'tenantId',
+    'workspace_id', 'workspaceId',
+    'account_id', 'accountId',
+    'company_id', 'companyId',
+    'org_id', 'orgId',
+    'org', 'organization',
+    'tenant', 'workspace', 'account', 'company',
+];
+
+/** Group name claim keys, parallel to the ID list above. */
+const GROUP_NAME_CLAIMS = [
+    'organization_name', 'organizationName',
+    'tenant_name', 'tenantName',
+    'workspace_name', 'workspaceName',
+    'account_name', 'accountName',
+    'company_name', 'companyName',
+];
+
+/**
+ * Personal email-domain blocklist. We never auto-create a Company in the
+ * CRM from a personal email domain — that would mean every Gmail user
+ * shows up as their own company. The list is intentionally conservative;
+ * unrecognised domains are treated as B2B by default.
+ */
+const PERSONAL_EMAIL_DOMAINS = new Set([
+    'gmail.com', 'googlemail.com',
+    'yahoo.com', 'yahoo.co.uk', 'yahoo.co.in', 'yahoo.fr', 'yahoo.de',
+    'ymail.com', 'rocketmail.com',
+    'hotmail.com', 'hotmail.co.uk', 'hotmail.fr',
+    'outlook.com', 'outlook.in', 'live.com', 'msn.com',
+    'icloud.com', 'me.com', 'mac.com',
+    'aol.com', 'gmx.com', 'gmx.de', 'gmx.net',
+    'protonmail.com', 'proton.me', 'pm.me',
+    'mail.com', 'zoho.com', 'fastmail.com', 'fastmail.fm',
+    'yandex.com', 'yandex.ru',
+    'qq.com', '163.com', '126.com', 'sina.com', 'sina.cn',
+    'naver.com', 'daum.net',
+    'rediffmail.com', 'tutanota.com', 'tuta.io', 'mailinator.com',
+    'duck.com', 'duckduckgo.com',
+]);
+
 /** Known auth cookie name patterns */
 const AUTH_COOKIE_PATTERNS = [
-    // Provider-specific
     '__session', '__clerk_db_jwt',
     'next-auth.session-token', '__Secure-next-auth.session-token',
     'sb-access-token',
     'auth0.is.authenticated',
-    // Keycloak
     'KEYCLOAK_SESSION', 'KEYCLOAK_IDENTITY', 'KC_RESTART',
-    // Generic
     'token', 'jwt', 'access_token', 'session_token', 'auth_token', 'id_token',
 ];
 
-/** localStorage/sessionStorage key patterns */
+/** localStorage / sessionStorage key patterns that probably hold auth state */
 const STORAGE_KEY_PATTERNS = [
-    // Provider-specific
     'sb-', 'supabase.auth.', 'firebase:authUser:', 'auth0spajs', '@@auth0spajs@@',
-    // Microsoft MSAL
     'msal.', 'msal.account',
-    // AWS Cognito / Amplify
     'CognitoIdentityServiceProvider', 'amplify-signin-with-hostedUI',
-    // Keycloak
     'kc-callback-',
-    // State managers
     'persist:', '-storage',
-    // Generic
     'token', 'jwt', 'auth', 'user', 'session', 'credential', 'account',
 ];
 
-/** JWT/user object fields containing email */
-const EMAIL_CLAIMS = ['email', 'preferred_username', 'user_email', 'mail', 'emailAddress', 'e_mail'];
-/** Full name fields */
-const NAME_CLAIMS = ['name', 'full_name', 'display_name', 'displayName'];
-/** First name fields */
-const FIRST_NAME_CLAIMS = ['given_name', 'first_name', 'firstName', 'fname'];
-/** Last name fields */
-const LAST_NAME_CLAIMS = ['family_name', 'last_name', 'lastName', 'lname'];
-
-/** Polling schedule: exponential backoff (ms) */
-const POLL_SCHEDULE = [
-    2_000,   // 2s — first check (auth providers need time to init)
-    5_000,   // 5s — second check
-    10_000,  // 10s
-    10_000,  // 10s
-    30_000,  // 30s — slower from here
-    30_000,  // 30s
-    30_000,  // 30s
-    60_000,  // 1m
-    60_000,  // 1m
-    60_000,  // 1m — stop after ~4 min total
+/**
+ * Storage keys belonging to common third-party SDKs that often store the
+ * current visitor's email or a support agent's email. We MUST skip these
+ * even though they match `STORAGE_KEY_PATTERNS` — pre-1.8.0 the SDK was
+ * picking these up and identifying real visitors as the wrong user.
+ *
+ * Substring match, case-insensitive.
+ */
+const THIRD_PARTY_SDK_BLOCKLIST = [
+    // Customer support / messaging
+    'intercom-', 'intercom_', 'crisp-client', 'tawk-', 'drift-',
+    'helpcrunch', 'olark', 'zendesk', 'freshchat', 'livechat',
+    'pylon-', 'frontapp-',
+    // Analytics / session replay
+    'fs-', 'fullstory', '_fs_', 'mixpanel', 'amplitude', 'mp_',
+    'heap-', 'logrocket', 'hotjar', '_hjUser', 'pendo', 'pendo_meta',
+    'userpilot', 'appcues', 'productfruits',
+    // CRM widgets
+    'hubspot', 'hubspotutk', '__hssc', '__hstc', '__hssrc', '_hsq',
+    'salesforce', 'liveperson',
+    // Tag managers / ad attribution
+    '_ga', '_gid', '_gcl_', '_fbp', '_fbc', 'gtm-', 'klaviyo',
+    'mautic', 'marketo',
+    // Feature flags / experimentation
+    'optimizely', 'split-', 'launchdarkly', 'statsig-',
 ];
 
-type IdentifiedUser = { email: string; firstName?: string; lastName?: string };
+/** Polling schedule (ms) — exponential backoff then a slower long-tail. */
+const POLL_SCHEDULE = [
+    2_000, 5_000, 10_000, 10_000, 30_000, 30_000, 30_000,
+    60_000, 60_000, 60_000,
+    300_000, 300_000, 300_000, 300_000, 300_000,
+];
+
+type IdentifiedUser = {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    /** Avatar / profile picture URL (lifted from JWT `picture`, `avatar`, etc.) */
+    avatar?: string;
+    /** User role / list of roles (string or comma-joined). */
+    role?: string;
+    /** Subscription plan / tier. */
+    plan?: string;
+    /** BCP47 / 2-letter locale. */
+    locale?: string;
+    /** Anything custom in the JWT that isn't a standard claim ends up here. */
+    customFields?: Record<string, unknown>;
+};
+
+type ExtractedGroup = {
+    id: string;
+    name?: string;
+    /** Extra group traits (plan, billing tier, slug, etc.). */
+    traits?: Record<string, unknown>;
+};
+
+type Candidate = IdentifiedUser & {
+    /** Higher score = more likely to be the real user. */
+    score: number;
+    /** Storage key (or `cookie:<name>`, or `provider:<name>`) where this came from. */
+    source: string;
+    /** Group/company association if we found one alongside this user. */
+    group?: ExtractedGroup;
+};
+
+type AutoIdentifyMode = 'auto' | 'providers' | 'aggressive' | 'off';
+type AutoGroupMode = 'auto' | 'jwt' | 'domain' | 'off';
 
 export class AutoIdentifyPlugin extends BasePlugin {
     name: PluginName = 'autoIdentify';
+
+    private mode: AutoIdentifyMode = 'auto';
+    private groupMode: AutoGroupMode = 'auto';
     private pollTimeouts: ReturnType<typeof setTimeout>[] = [];
     private identifiedEmail: string | null = null;
+    private identifiedGroupId: string | null = null;
+    /** Source key of whatever produced the current identifiedEmail, used by auto-logout. */
+    private identifiedSource: string | null = null;
+
     private storageHandler: ((event: StorageEvent) => void) | null = null;
+    private identifyHookHandler: ((event: Event) => void) | null = null;
+    private groupHookHandler: ((event: Event) => void) | null = null;
+    private logoutHookHandler: (() => void) | null = null;
     private sessionProbed = false;
 
     init(tracker: TrackerCore): void {
@@ -105,45 +259,172 @@ export class AutoIdentifyPlugin extends BasePlugin {
 
         if (typeof window === 'undefined') return;
 
-        // Schedule poll checks with exponential backoff
+        const cfg: any = tracker.getConfig?.() || {};
+        const requestedMode: AutoIdentifyMode = cfg.autoIdentifyMode ?? 'auto';
+        this.mode = requestedMode;
+        const requestedGroupMode: AutoGroupMode = cfg.autoGroupMode ?? 'auto';
+        this.groupMode = requestedGroupMode;
+
+        if (this.mode === 'off') return;
+
+        // Manual hook — apps can dispatch CustomEvent('clianta:identify', { detail: {...} })
+        this.identifyHookHandler = (event: Event) => {
+            const detail = (event as CustomEvent)?.detail;
+            if (!detail || typeof detail !== 'object') return;
+            const email = detail.email;
+            if (typeof email !== 'string' || !this.isValidEmail(email)) return;
+
+            const traits: IdentifiedUser = { email };
+            if (typeof detail.firstName === 'string') traits.firstName = detail.firstName;
+            if (typeof detail.lastName === 'string') traits.lastName = detail.lastName;
+            if (typeof detail.avatar === 'string') traits.avatar = detail.avatar;
+            if (typeof detail.role === 'string') traits.role = detail.role;
+            if (typeof detail.plan === 'string') traits.plan = detail.plan;
+            if (typeof detail.locale === 'string') traits.locale = detail.locale;
+            if (detail.customFields && typeof detail.customFields === 'object') {
+                traits.customFields = detail.customFields;
+            }
+
+            this.commit({
+                ...traits,
+                score: 1000, // manual hook always wins
+                source: 'event:clianta:identify',
+                group: this.extractGroupFromManualDetail(detail) ?? undefined,
+            });
+        };
+        window.addEventListener('clianta:identify', this.identifyHookHandler);
+
+        // Manual group hook — apps can dispatch CustomEvent('clianta:group', { detail: { id, name, traits } })
+        this.groupHookHandler = (event: Event) => {
+            const detail = (event as CustomEvent)?.detail;
+            const group = this.extractGroupFromManualDetail(detail);
+            if (!group || !this.tracker || this.groupMode === 'off') return;
+
+            this.commitGroup(group);
+        };
+        window.addEventListener('clianta:group', this.groupHookHandler);
+
+        // Manual logout hook
+        this.logoutHookHandler = () => this.handleLogout('event:clianta:logout');
+        window.addEventListener('clianta:logout', this.logoutHookHandler);
+
+        // 0. Restore sticky identification — if we identified a user on a previous
+        //    page load, prefer them immediately. This eliminates flapping between
+        //    candidates when both Clerk and a JWT exist with different staleness.
+        if (this.mode === 'auto' || this.mode === 'aggressive') {
+            this.restoreSticky();
+        }
+
+        // Schedule poll checks
         this.schedulePollChecks();
 
-        // Listen for storage changes (real-time detection of login/logout)
+        // Storage events — for cross-tab logins AND for logout detection.
         this.listenForStorageChanges();
     }
 
     destroy(): void {
-        // Clear all scheduled polls
         for (const t of this.pollTimeouts) clearTimeout(t);
         this.pollTimeouts = [];
 
-        // Remove storage listener
-        if (this.storageHandler && typeof window !== 'undefined') {
-            window.removeEventListener('storage', this.storageHandler);
-            this.storageHandler = null;
+        if (typeof window !== 'undefined') {
+            if (this.storageHandler) {
+                window.removeEventListener('storage', this.storageHandler);
+                this.storageHandler = null;
+            }
+            if (this.identifyHookHandler) {
+                window.removeEventListener('clianta:identify', this.identifyHookHandler);
+                this.identifyHookHandler = null;
+            }
+            if (this.groupHookHandler) {
+                window.removeEventListener('clianta:group', this.groupHookHandler);
+                this.groupHookHandler = null;
+            }
+            if (this.logoutHookHandler) {
+                window.removeEventListener('clianta:logout', this.logoutHookHandler);
+                this.logoutHookHandler = null;
+            }
         }
 
         super.destroy();
     }
 
     // ════════════════════════════════════════════════
-    // SCHEDULING
+    // Sticky identification
     // ════════════════════════════════════════════════
 
-    /**
-     * Schedule poll checks with exponential backoff.
-     * Much lighter than setInterval — each check is self-contained.
-     */
+    private restoreSticky(): void {
+        try {
+            if (typeof localStorage === 'undefined') return;
+            const stickyEmail = localStorage.getItem(STICKY_EMAIL_KEY);
+            const stickySource = localStorage.getItem(STICKY_SOURCE_KEY);
+            const stickyGroupId = localStorage.getItem(STICKY_GROUP_ID_KEY);
+            const stickyGroupName = localStorage.getItem(STICKY_GROUP_NAME_KEY);
+
+            if (stickyEmail && this.isValidEmail(stickyEmail)) {
+                this.identifiedEmail = stickyEmail;
+                this.identifiedSource = stickySource;
+                if (this.tracker) {
+                    this.tracker.identify(stickyEmail, {});
+                }
+                // Cancel pending polls — we've got our user.
+                for (const t of this.pollTimeouts) clearTimeout(t);
+                this.pollTimeouts = [];
+            }
+
+            if (stickyGroupId && this.tracker && this.groupMode !== 'off') {
+                this.identifiedGroupId = stickyGroupId;
+                try {
+                    this.tracker.group(stickyGroupId, stickyGroupName ? { name: stickyGroupName } : {});
+                } catch { /* group error */ }
+            }
+        } catch { /* localStorage blocked */ }
+    }
+
+    private persistSticky(email: string, source: string): void {
+        try {
+            if (typeof localStorage === 'undefined') return;
+            localStorage.setItem(STICKY_EMAIL_KEY, email);
+            localStorage.setItem(STICKY_SOURCE_KEY, source);
+        } catch { /* localStorage blocked */ }
+    }
+
+    private persistStickyGroup(group: ExtractedGroup): void {
+        try {
+            if (typeof localStorage === 'undefined') return;
+            localStorage.setItem(STICKY_GROUP_ID_KEY, group.id);
+            if (group.name) localStorage.setItem(STICKY_GROUP_NAME_KEY, group.name);
+            else localStorage.removeItem(STICKY_GROUP_NAME_KEY);
+        } catch { /* localStorage blocked */ }
+    }
+
+    private clearSticky(): void {
+        try {
+            if (typeof localStorage === 'undefined') return;
+            localStorage.removeItem(STICKY_EMAIL_KEY);
+            localStorage.removeItem(STICKY_SOURCE_KEY);
+            localStorage.removeItem(STICKY_GROUP_ID_KEY);
+            localStorage.removeItem(STICKY_GROUP_NAME_KEY);
+        } catch { /* localStorage blocked */ }
+    }
+
+    // ════════════════════════════════════════════════
+    // Scheduling
+    // ════════════════════════════════════════════════
+
     private schedulePollChecks(): void {
+        for (const t of this.pollTimeouts) clearTimeout(t);
+        this.pollTimeouts = [];
+
         let cumulativeDelay = 0;
         for (let i = 0; i < POLL_SCHEDULE.length; i++) {
             cumulativeDelay += POLL_SCHEDULE[i];
             const timeout = setTimeout(() => {
-                if (this.identifiedEmail) return; // Already identified, skip
-                try { this.checkForAuthUser(); } catch { /* silently fail */ }
+                if (this.identifiedEmail) return;
+                try { this.runScan(); } catch { /* silently fail */ }
 
-                // On the 4th check (~27s), probe NextAuth if signals detected
-                if (i === 3 && !this.sessionProbed) {
+                // NextAuth probe (auto and aggressive only) on the 4th tick (~27s)
+                if ((this.mode === 'auto' || this.mode === 'aggressive')
+                    && i === 3 && !this.sessionProbed) {
                     this.sessionProbed = true;
                     this.guardedSessionProbe();
                 }
@@ -153,100 +434,177 @@ export class AutoIdentifyPlugin extends BasePlugin {
     }
 
     /**
-     * Listen for `storage` events — fired when another tab or the app
-     * modifies localStorage. Enables real-time detection after login.
+     * Listen for storage events. Used for two things at once:
+     *   - cross-tab login detection (auth key appears / changes)
+     *   - cross-tab AND same-tab logout detection (auth key removed / cleared)
+     *
+     * Note: same-tab `localStorage.setItem` does NOT fire storage events. For
+     * same-tab logins we still need polling. For same-tab logouts most auth
+     * libraries also call `localStorage.clear()` or `removeItem()` which DO
+     * fire on listeners attached BEFORE the call — but only for changes from
+     * OTHER tabs. So same-tab logout detection is best-effort.
      */
     private listenForStorageChanges(): void {
         this.storageHandler = (event: StorageEvent) => {
-            if (this.identifiedEmail) return; // Already identified
-            if (!event.key || !event.newValue) return;
+            if (!event.key) return;
 
             const keyLower = event.key.toLowerCase();
-            const isAuthKey = STORAGE_KEY_PATTERNS.some(p =>
-                keyLower.includes(p.toLowerCase())
-            );
+            const isAuthKey = STORAGE_KEY_PATTERNS.some(p => keyLower.includes(p.toLowerCase()));
             if (!isAuthKey) return;
+            if (this.isThirdPartySdkKey(event.key)) return;
 
-            // Auth-related storage changed — run a check
-            try { this.checkForAuthUser(); } catch { /* silently fail */ }
+            // Logout detection — auth key was removed or cleared
+            if ((event.newValue === null || event.newValue === '') && this.identifiedEmail) {
+                // If THIS specific source is what we identified from, definitely a logout.
+                // If it's a different auth key, still likely a logout (most auth systems
+                // clear all their keys at once).
+                if (!this.identifiedSource || this.identifiedSource === `storage:${event.key}`) {
+                    this.handleLogout(`storage:${event.key}`);
+                    return;
+                }
+                this.handleLogout(`storage:${event.key}`);
+                return;
+            }
+
+            // Login detection — fresh value in an auth key
+            if (event.newValue && !this.identifiedEmail) {
+                try { this.runScan(); } catch { /* silently fail */ }
+            }
         };
-        window.addEventListener('storage', this.storageHandler);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('storage', this.storageHandler);
+        }
     }
 
     // ════════════════════════════════════════════════
-    // MAIN CHECK — scan all sources (priority order)
+    // Logout
     // ════════════════════════════════════════════════
 
-    private checkForAuthUser(): void {
-        if (!this.tracker || this.identifiedEmail) return;
+    private handleLogout(reason: string): void {
+        this.identifiedEmail = null;
+        this.identifiedGroupId = null;
+        this.identifiedSource = null;
+        this.sessionProbed = false;
+        this.clearSticky();
 
-        // 0. Check well-known auth provider globals (most reliable, zero overhead)
-        try {
-            const providerUser = this.checkAuthProviders();
-            if (providerUser) { this.identifyUser(providerUser); return; }
-        } catch { /* provider check failed */ }
+        if (this.tracker) {
+            try { this.tracker.reset(); } catch { /* tracker.reset throws? swallow. */ }
+        }
 
-        // 1. Check cookies for JWTs
-        try {
-            const cookieUser = this.checkCookies();
-            if (cookieUser) { this.identifyUser(cookieUser); return; }
-        } catch { /* cookie access blocked */ }
+        // Re-arm polls so the next user on this browser gets identified.
+        this.schedulePollChecks();
 
-        // 2. Check localStorage (guarded deep scan)
-        try {
-            if (typeof localStorage !== 'undefined') {
-                const localUser = this.checkStorage(localStorage);
-                if (localUser) { this.identifyUser(localUser); return; }
-            }
-        } catch { /* localStorage access blocked */ }
-
-        // 3. Check sessionStorage (guarded deep scan)
-        try {
-            if (typeof sessionStorage !== 'undefined') {
-                const sessionUser = this.checkStorage(sessionStorage);
-                if (sessionUser) { this.identifyUser(sessionUser); return; }
-            }
-        } catch { /* sessionStorage access blocked */ }
+        // Surface the logout to the rest of the page in case other code wants it.
+        if (typeof window !== 'undefined' && reason !== 'event:clianta:logout') {
+            try {
+                window.dispatchEvent(new Event('clianta:logout'));
+            } catch { /* CustomEvent unsupported (very old browsers) */ }
+        }
     }
 
     // ════════════════════════════════════════════════
-    // AUTH PROVIDER GLOBALS
+    // Scan pipeline
     // ════════════════════════════════════════════════
 
-    private checkAuthProviders(): IdentifiedUser | null {
+    private runScan(): void {
+        if (!this.tracker || this.identifiedEmail || this.mode === 'off') return;
+
+        const candidates: Candidate[] = [];
+
+        // 1. Provider globals — always run, regardless of mode.
+        try {
+            const providerCandidates = this.scanAuthProviders();
+            candidates.push(...providerCandidates);
+        } catch { /* provider scan failed */ }
+
+        if (this.mode !== 'providers') {
+            // 2. Cookies — JWT-only by default, plain decoded by aggressive.
+            try {
+                candidates.push(...this.scanCookies());
+            } catch { /* cookie access blocked */ }
+
+            // 3. Storage — JWT-only in 'auto', plain-JSON deep scan in 'aggressive'.
+            try {
+                if (typeof localStorage !== 'undefined') {
+                    candidates.push(...this.scanStorage(localStorage, 'localStorage'));
+                }
+            } catch { /* localStorage access blocked */ }
+            try {
+                if (typeof sessionStorage !== 'undefined') {
+                    candidates.push(...this.scanStorage(sessionStorage, 'sessionStorage'));
+                }
+            } catch { /* sessionStorage access blocked */ }
+        }
+
+        if (candidates.length === 0) return;
+
+        // Pick the highest-scoring candidate, with stickiness as a tiebreaker
+        // toward whoever we already identified before.
+        const best = this.pickBestCandidate(candidates);
+        if (best) this.commit(best);
+    }
+
+    private pickBestCandidate(candidates: Candidate[]): Candidate | null {
+        if (candidates.length === 0) return null;
+        // Stable sort by score desc; among equals prefer providers > cookies > storage.
+        return candidates.slice().sort((a, b) => b.score - a.score)[0];
+    }
+
+    // ════════════════════════════════════════════════
+    // Provider globals — always-on
+    // ════════════════════════════════════════════════
+
+    private scanAuthProviders(): Candidate[] {
         const win = window as any;
+        const out: Candidate[] = [];
 
-        // ─── Clerk ───
+        // Clerk
         try {
             const clerkUser = win.Clerk?.user;
             if (clerkUser) {
                 const email = clerkUser.primaryEmailAddress?.emailAddress
                     || clerkUser.emailAddresses?.[0]?.emailAddress;
                 if (email && this.isValidEmail(email)) {
-                    return {
+                    // Clerk org — first organization the user belongs to
+                    const clerkOrg = clerkUser.organizationMemberships?.[0]?.organization
+                        || (win.Clerk?.organization ?? null);
+                    const group: ExtractedGroup | undefined = clerkOrg?.id ? {
+                        id: String(clerkOrg.id),
+                        name: clerkOrg.name ? String(clerkOrg.name) : undefined,
+                        traits: clerkOrg.slug ? { slug: clerkOrg.slug } : undefined,
+                    } : undefined;
+                    out.push({
                         email,
                         firstName: clerkUser.firstName || undefined,
                         lastName: clerkUser.lastName || undefined,
-                    };
+                        avatar: typeof clerkUser.imageUrl === 'string' ? clerkUser.imageUrl
+                            : typeof clerkUser.profileImageUrl === 'string' ? clerkUser.profileImageUrl
+                            : undefined,
+                        score: this.scoreCandidate(email, 'provider:clerk'),
+                        source: 'provider:clerk',
+                        group,
+                    });
                 }
             }
         } catch { /* Clerk not available */ }
 
-        // ─── Firebase Auth ───
+        // Firebase
         try {
             const fbAuth = win.firebase?.auth?.();
             const fbUser = fbAuth?.currentUser;
             if (fbUser?.email && this.isValidEmail(fbUser.email)) {
                 const parts = (fbUser.displayName || '').split(' ');
-                return {
+                out.push({
                     email: fbUser.email,
                     firstName: parts[0] || undefined,
                     lastName: parts.slice(1).join(' ') || undefined,
-                };
+                    score: this.scoreCandidate(fbUser.email, 'provider:firebase'),
+                    source: 'provider:firebase',
+                });
             }
         } catch { /* Firebase not available */ }
 
-        // ─── Supabase ───
+        // Supabase
         try {
             const sbClient = win.__SUPABASE_CLIENT__ || win.supabase;
             if (sbClient?.auth) {
@@ -254,55 +612,67 @@ export class AutoIdentifyPlugin extends BasePlugin {
                 const user = session?.data?.session?.user || session?.user;
                 if (user?.email && this.isValidEmail(user.email)) {
                     const meta = user.user_metadata || {};
-                    return {
+                    out.push({
                         email: user.email,
                         firstName: meta.first_name || meta.full_name?.split(' ')[0] || undefined,
                         lastName: meta.last_name || meta.full_name?.split(' ').slice(1).join(' ') || undefined,
-                    };
+                        score: this.scoreCandidate(user.email, 'provider:supabase'),
+                        source: 'provider:supabase',
+                    });
                 }
             }
         } catch { /* Supabase not available */ }
 
-        // ─── Auth0 SPA ───
+        // Auth0 SPA
         try {
             const auth0 = win.__auth0Client || win.auth0Client;
             if (auth0?.isAuthenticated?.()) {
                 const user = auth0.getUser?.();
                 if (user?.email && this.isValidEmail(user.email)) {
-                    return {
+                    const group = this.extractGroupFromClaims(user) ?? undefined;
+                    out.push({
                         email: user.email,
                         firstName: user.given_name || user.name?.split(' ')[0] || undefined,
                         lastName: user.family_name || user.name?.split(' ').slice(1).join(' ') || undefined,
-                    };
+                        avatar: typeof user.picture === 'string' ? user.picture : undefined,
+                        score: this.scoreCandidate(user.email, 'provider:auth0'),
+                        source: 'provider:auth0',
+                        group,
+                    });
                 }
             }
         } catch { /* Auth0 not available */ }
 
-        // ─── Google Identity Services (Google OAuth / Sign In With Google) ───
-        // GIS stores the credential JWT from the callback; also check gapi
+        // Google Identity Services / gapi
         try {
             const gisCredential = win.__google_credential_response?.credential;
             if (gisCredential && typeof gisCredential === 'string') {
-                const user = this.extractUserFromToken(gisCredential);
-                if (user) return user;
+                const u = this.extractUserFromToken(gisCredential, true);
+                if (u) {
+                    out.push({
+                        ...u,
+                        score: this.scoreCandidate(u.email, 'provider:google'),
+                        source: 'provider:google',
+                    });
+                }
             }
-            // Legacy gapi.auth2
             const gapiUser = win.gapi?.auth2?.getAuthInstance?.()?.currentUser?.get?.();
             const profile = gapiUser?.getBasicProfile?.();
             if (profile) {
                 const email = profile.getEmail?.();
                 if (email && this.isValidEmail(email)) {
-                    return {
+                    out.push({
                         email,
                         firstName: profile.getGivenName?.() || undefined,
                         lastName: profile.getFamilyName?.() || undefined,
-                    };
+                        score: this.scoreCandidate(email, 'provider:gapi'),
+                        source: 'provider:gapi',
+                    });
                 }
             }
         } catch { /* Google auth not available */ }
 
-        // ─── Microsoft MSAL (Microsoft OAuth / Azure AD) ───
-        // MSAL stores account info in window.msalInstance or PublicClientApplication
+        // MSAL
         try {
             const msalInstance = win.msalInstance || win.__msalInstance;
             if (msalInstance) {
@@ -310,239 +680,278 @@ export class AutoIdentifyPlugin extends BasePlugin {
                 const account = accounts[0];
                 if (account?.username && this.isValidEmail(account.username)) {
                     const nameParts = (account.name || '').split(' ');
-                    return {
+                    // MSAL puts the Azure AD tenant ID on `tenantId`
+                    const tenantId = account.tenantId || account.idTokenClaims?.tid;
+                    const group: ExtractedGroup | undefined = tenantId ? {
+                        id: String(tenantId),
+                        name: account.idTokenClaims?.tenant_name || undefined,
+                    } : undefined;
+                    out.push({
                         email: account.username,
                         firstName: nameParts[0] || undefined,
                         lastName: nameParts.slice(1).join(' ') || undefined,
-                    };
+                        score: this.scoreCandidate(account.username, 'provider:msal'),
+                        source: 'provider:msal',
+                        group,
+                    });
                 }
             }
         } catch { /* MSAL not available */ }
 
-        // ─── AWS Cognito / Amplify ───
+        // AWS Cognito / Amplify
         try {
-            // Amplify v6+
             const amplifyUser = win.aws_amplify_currentUser || win.__amplify_user;
             if (amplifyUser?.signInDetails?.loginId && this.isValidEmail(amplifyUser.signInDetails.loginId)) {
-                return {
+                out.push({
                     email: amplifyUser.signInDetails.loginId,
                     firstName: amplifyUser.attributes?.given_name || undefined,
                     lastName: amplifyUser.attributes?.family_name || undefined,
-                };
+                    score: this.scoreCandidate(amplifyUser.signInDetails.loginId, 'provider:cognito'),
+                    source: 'provider:cognito',
+                });
             }
-            // Check Cognito localStorage keys directly
             if (typeof localStorage !== 'undefined') {
                 const cognitoUser = this.checkCognitoStorage();
-                if (cognitoUser) return cognitoUser;
+                if (cognitoUser) {
+                    out.push({
+                        ...cognitoUser,
+                        score: this.scoreCandidate(cognitoUser.email, 'provider:cognito-storage'),
+                        source: 'provider:cognito-storage',
+                    });
+                }
             }
         } catch { /* Cognito/Amplify not available */ }
 
-        // ─── Keycloak ───
+        // Keycloak
         try {
             const keycloak = win.keycloak || win.Keycloak;
             if (keycloak?.authenticated && keycloak.tokenParsed) {
                 const claims = keycloak.tokenParsed;
                 const email = claims.email || claims.preferred_username;
                 if (email && this.isValidEmail(email)) {
-                    return {
+                    const group = this.extractGroupFromClaims(claims) ?? undefined;
+                    out.push({
                         email,
                         firstName: claims.given_name || undefined,
                         lastName: claims.family_name || undefined,
-                    };
+                        score: this.scoreCandidate(email, 'provider:keycloak'),
+                        source: 'provider:keycloak',
+                        group,
+                    });
                 }
             }
         } catch { /* Keycloak not available */ }
 
-        // ─── Global clianta identify hook ───
-        // Any auth system can set: window.__clianta_user = { email, firstName, lastName }
+        // window.__clianta_user — universal escape hatch
         try {
             const manualUser = win.__clianta_user;
             if (manualUser?.email && typeof manualUser.email === 'string' && this.isValidEmail(manualUser.email)) {
-                return {
+                const traits: IdentifiedUser = this.extractUserFromClaims(manualUser) ?? { email: manualUser.email };
+                const group = this.extractGroupFromManualDetail(manualUser) ?? this.extractGroupFromClaims(manualUser) ?? undefined;
+                out.push({
+                    ...traits,
                     email: manualUser.email,
-                    firstName: manualUser.firstName || undefined,
-                    lastName: manualUser.lastName || undefined,
-                };
+                    firstName: typeof manualUser.firstName === 'string' ? manualUser.firstName : traits.firstName,
+                    lastName: typeof manualUser.lastName === 'string' ? manualUser.lastName : traits.lastName,
+                    score: 1000, // manual override always wins
+                    source: 'global:__clianta_user',
+                    group,
+                });
             }
         } catch { /* manual user not set */ }
 
+        // window.__clianta_group — explicit group escape hatch (fires alongside whatever
+        // user is detected). We push a "userless" candidate scored 0, so it doesn't
+        // win identify but DOES surface the group in pickBestCandidate's chosen entry
+        // when that entry has no group of its own. We handle this in pickBestCandidate.
+        // (The runScan loop later merges any standalone group into the winning user.)
+        return out;
+    }
+
+    /**
+     * Pull a standalone group from `window.__clianta_group` — used when the
+     * customer can give us the group but the user is detected separately.
+     */
+    private scanStandaloneGroup(): ExtractedGroup | null {
+        if (typeof window === 'undefined') return null;
+        try {
+            const g = (window as any).__clianta_group;
+            if (g) {
+                const fromGlobal = this.extractGroupFromManualDetail(g);
+                if (fromGlobal) return fromGlobal;
+            }
+        } catch { /* global not set */ }
         return null;
     }
 
     // ════════════════════════════════════════════════
-    // IDENTIFY USER
+    // Cookie scan
     // ════════════════════════════════════════════════
 
-    private identifyUser(user: IdentifiedUser): void {
-        if (!this.tracker || this.identifiedEmail === user.email) return;
-
-        this.identifiedEmail = user.email;
-        this.tracker.identify(user.email, {
-            firstName: user.firstName,
-            lastName: user.lastName,
-        });
-
-        // Cancel all remaining polls — we found the user
-        for (const t of this.pollTimeouts) clearTimeout(t);
-        this.pollTimeouts = [];
-    }
-
-    // ════════════════════════════════════════════════
-    // COOKIE SCANNING
-    // ════════════════════════════════════════════════
-
-    private checkCookies(): IdentifiedUser | null {
-        if (typeof document === 'undefined') return null;
-
+    private scanCookies(): Candidate[] {
+        if (typeof document === 'undefined') return [];
+        const out: Candidate[] = [];
         try {
             const cookies = document.cookie.split(';').map(c => c.trim());
-
             for (const cookie of cookies) {
                 const [name, ...valueParts] = cookie.split('=');
                 const value = valueParts.join('=');
                 const cookieName = name.trim().toLowerCase();
+                if (!value) continue;
 
-                const isAuthCookie = AUTH_COOKIE_PATTERNS.some(pattern =>
-                    cookieName.includes(pattern.toLowerCase())
-                );
+                if (this.isThirdPartySdkKey(name)) continue;
 
-                if (isAuthCookie && value) {
-                    const user = this.extractUserFromToken(decodeURIComponent(value));
-                    if (user) return user;
+                const isAuthCookie = AUTH_COOKIE_PATTERNS.some(p => cookieName.includes(p.toLowerCase()));
+                if (!isAuthCookie) continue;
+
+                const decoded = (() => {
+                    try { return decodeURIComponent(value); } catch { return value; }
+                })();
+
+                // 'auto' and 'aggressive' both do JWT decode here
+                const u = this.extractUserFromToken(decoded, true);
+                if (u) {
+                    out.push({
+                        ...u,
+                        score: this.scoreCandidate(u.email, `cookie:${name}`),
+                        source: `cookie:${name}`,
+                    });
                 }
             }
-        } catch {
-            // Cookie access may fail (cross-origin iframe, etc.)
-        }
-
-        return null;
+        } catch { /* cookie access blocked */ }
+        return out;
     }
 
     // ════════════════════════════════════════════════
-    // STORAGE SCANNING (GUARDED DEEP RECURSIVE)
+    // Storage scan
     // ════════════════════════════════════════════════
 
-    private checkStorage(storage: Storage): IdentifiedUser | null {
+    private scanStorage(storage: Storage, label: string): Candidate[] {
+        const out: Candidate[] = [];
         try {
             for (let i = 0; i < storage.length; i++) {
                 const key = storage.key(i);
                 if (!key) continue;
+                if (this.isThirdPartySdkKey(key)) continue;
 
                 const keyLower = key.toLowerCase();
-                const isAuthKey = STORAGE_KEY_PATTERNS.some(pattern =>
-                    keyLower.includes(pattern.toLowerCase())
-                );
+                const isAuthKey = STORAGE_KEY_PATTERNS.some(p => keyLower.includes(p.toLowerCase()));
+                if (!isAuthKey) continue;
 
-                if (isAuthKey) {
-                    const value = storage.getItem(key);
-                    if (!value) continue;
+                const value = storage.getItem(key);
+                if (!value || value.length > MAX_STORAGE_VALUE_SIZE) continue;
 
-                    // Size guard — skip values larger than 50KB
-                    if (value.length > MAX_STORAGE_VALUE_SIZE) continue;
+                // 'auto' and 'aggressive' both try JWT decode first
+                const tokenUser = this.extractUserFromToken(value, true);
+                if (tokenUser) {
+                    out.push({
+                        ...tokenUser,
+                        score: this.scoreCandidate(tokenUser.email, `${label}:${key}`),
+                        source: `${label}:${key}`,
+                    });
+                    continue;
+                }
 
-                    // Try as direct JWT
-                    const user = this.extractUserFromToken(value);
-                    if (user) return user;
-
-                    // Try as JSON — guarded deep recursive scan
+                // Plain JSON deep scan — aggressive mode only
+                if (this.mode === 'aggressive') {
                     try {
                         const json = JSON.parse(value);
-                        const jsonUser = this.deepScanForUser(json, 0);
-                        if (jsonUser) return jsonUser;
-                    } catch {
-                        // Not JSON, skip
-                    }
+                        const jsonUser = this.deepScanForUser(json, 0, true);
+                        if (jsonUser) {
+                            out.push({
+                                ...jsonUser,
+                                score: this.scoreCandidate(jsonUser.email, `${label}:${key}`),
+                                source: `${label}:${key}`,
+                            });
+                        }
+                    } catch { /* not JSON, skip */ }
                 }
             }
-        } catch {
-            // Storage access may fail (iframe, security restrictions)
-        }
-
-        return null;
+        } catch { /* storage access blocked */ }
+        return out;
     }
 
     // ════════════════════════════════════════════════
-    // DEEP RECURSIVE SCANNING (guarded)
+    // Deep recursive scanning (aggressive mode)
     // ════════════════════════════════════════════════
 
-    /**
-     * Recursively scan a JSON object for user data.
-     * Guards: max depth (4), max keys per level (20), no array traversal.
-     *
-     * Handles ANY nesting pattern:
-     *   - Zustand persist: { state: { user: { email } } }
-     *   - Redux persist:   { auth: { user: { email } } }
-     *   - Pinia:           { auth: { userData: { email } } }
-     *   - NextAuth:        { user: { email }, expires: ... }
-     *   - Direct:          { email, name }
-     */
-    private deepScanForUser(data: unknown, depth: number): IdentifiedUser | null {
+    private deepScanForUser(data: unknown, depth: number, validateJwt: boolean): (IdentifiedUser & { group?: ExtractedGroup }) | null {
         if (depth > MAX_SCAN_DEPTH || !data || typeof data !== 'object' || Array.isArray(data)) {
             return null;
         }
-
         const obj = data as Record<string, any>;
         const keys = Object.keys(obj);
 
-        // 1. Try direct extraction at this level
-        const user = this.extractUserFromClaims(obj);
-        if (user) return user;
+        const direct = this.extractUserFromClaims(obj);
+        if (direct) {
+            const group = this.extractGroupFromClaims(obj);
+            return group ? { ...direct, group } : direct;
+        }
 
-        // Guard: limit keys scanned per level
         const keysToScan = keys.slice(0, MAX_KEYS_PER_LEVEL);
 
-        // 2. Check for JWT strings at this level
+        // JWT strings at this level
         for (const key of keysToScan) {
             const val = obj[key];
             if (typeof val === 'string' && val.length > 30 && val.length < 4000) {
-                // Only check strings that could plausibly be JWTs (30-4000 chars)
                 const dotCount = (val.match(/\./g) || []).length;
                 if (dotCount === 2) {
-                    const tokenUser = this.extractUserFromToken(val);
+                    const tokenUser = this.extractUserFromToken(val, validateJwt);
                     if (tokenUser) return tokenUser;
                 }
             }
         }
 
-        // 3. Recurse into nested objects
         for (const key of keysToScan) {
             const val = obj[key];
             if (val && typeof val === 'object' && !Array.isArray(val)) {
-                const nestedUser = this.deepScanForUser(val, depth + 1);
-                if (nestedUser) return nestedUser;
+                const nested = this.deepScanForUser(val, depth + 1, validateJwt);
+                if (nested) return nested;
             }
         }
-
         return null;
     }
 
     // ════════════════════════════════════════════════
-    // TOKEN & CLAIMS EXTRACTION
+    // Token & claims extraction
     // ════════════════════════════════════════════════
 
-    /**
-     * Try to extract user info from a JWT token string (header.payload.signature)
-     */
-    private extractUserFromToken(token: string): IdentifiedUser | null {
+    private extractUserFromToken(token: string, validateFreshness: boolean): (IdentifiedUser & { group?: ExtractedGroup }) | null {
         const parts = token.split('.');
         if (parts.length !== 3) return null;
-
         try {
             const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-            return this.extractUserFromClaims(payload);
+
+            if (validateFreshness && !this.isJwtFresh(payload)) return null;
+
+            const user = this.extractUserFromClaims(payload);
+            if (!user) return null;
+
+            const group = this.extractGroupFromClaims(payload);
+            if (group) return { ...user, group };
+            return user;
         } catch {
             return null;
         }
     }
 
     /**
-     * Extract user from JWT claims or user-like object.
-     * Uses proper email regex validation.
+     * SAFEGUARD #1: Token freshness.
+     * - exp must be in the future (token not expired)
+     * - iat must be within the last 30 days (no stale leftover token)
      */
+    private isJwtFresh(payload: any): boolean {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const thirtyDaysSec = 30 * 24 * 60 * 60;
+
+        if (typeof payload.exp === 'number' && payload.exp <= nowSec) return false;
+        if (typeof payload.iat === 'number' && nowSec - payload.iat > thirtyDaysSec) return false;
+        return true;
+    }
+
     private extractUserFromClaims(claims: Record<string, any>): IdentifiedUser | null {
         if (!claims || typeof claims !== 'object') return null;
 
-        // Find email — check standard claim fields
         let email: string | null = null;
         for (const claim of EMAIL_CLAIMS) {
             const value = claims[claim];
@@ -551,8 +960,6 @@ export class AutoIdentifyPlugin extends BasePlugin {
                 break;
             }
         }
-
-        // Check nested email objects (Clerk pattern)
         if (!email) {
             const nestedEmail = claims.primaryEmailAddress?.emailAddress
                 || claims.emailAddresses?.[0]?.emailAddress;
@@ -560,28 +967,16 @@ export class AutoIdentifyPlugin extends BasePlugin {
                 email = nestedEmail;
             }
         }
-
         if (!email) return null;
 
-        // Find name
         let firstName: string | undefined;
         let lastName: string | undefined;
-
         for (const claim of FIRST_NAME_CLAIMS) {
-            if (claims[claim] && typeof claims[claim] === 'string') {
-                firstName = claims[claim];
-                break;
-            }
+            if (claims[claim] && typeof claims[claim] === 'string') { firstName = claims[claim]; break; }
         }
-
         for (const claim of LAST_NAME_CLAIMS) {
-            if (claims[claim] && typeof claims[claim] === 'string') {
-                lastName = claims[claim];
-                break;
-            }
+            if (claims[claim] && typeof claims[claim] === 'string') { lastName = claims[claim]; break; }
         }
-
-        // Try full name if no first/last found
         if (!firstName) {
             for (const claim of NAME_CLAIMS) {
                 if (claims[claim] && typeof claims[claim] === 'string') {
@@ -593,134 +988,371 @@ export class AutoIdentifyPlugin extends BasePlugin {
             }
         }
 
-        return { email, firstName, lastName };
+        // Rich traits — picked up so they propagate to CRM customFields
+        const avatar = this.firstString(claims, AVATAR_CLAIMS);
+        const role = this.firstStringOrArray(claims, ROLE_CLAIMS);
+        const plan = this.firstString(claims, PLAN_CLAIMS);
+        const locale = this.firstString(claims, LOCALE_CLAIMS);
+
+        // Anything we didn't explicitly map gets preserved as customFields,
+        // so e.g. `is_admin`, `team_id`, `signup_date` flow through to the CRM.
+        const customFields: Record<string, unknown> = {};
+        for (const key of Object.keys(claims)) {
+            if (STANDARD_JWT_CLAIMS.has(key)) continue;
+            const v = claims[key];
+            // Preserve only primitives + simple arrays of primitives — no nested objects
+            // (those would be auth-provider state we don't want polluting CRM custom fields).
+            if (v === null) continue;
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                customFields[key] = v;
+            } else if (Array.isArray(v) && v.every(x => ['string', 'number', 'boolean'].includes(typeof x))) {
+                customFields[key] = v;
+            }
+        }
+
+        const out: IdentifiedUser = { email, firstName, lastName };
+        if (avatar) out.avatar = avatar;
+        if (role) out.role = role;
+        if (plan) out.plan = plan;
+        if (locale) out.locale = locale;
+        if (Object.keys(customFields).length > 0) out.customFields = customFields;
+        return out;
+    }
+
+    /**
+     * Pull a group association out of a JWT claims object. We look for the
+     * usual organization / tenant / workspace / account / company id+name
+     * pairs, and as a special case Clerk's nested `organizationMemberships`.
+     */
+    private extractGroupFromClaims(claims: Record<string, any>): ExtractedGroup | null {
+        if (!claims || typeof claims !== 'object') return null;
+        if (this.groupMode === 'off' || this.groupMode === 'domain') return null;
+
+        // Clerk JWT shape (also used by some custom Clerk integrations)
+        const clerkOrg = claims.organizationMemberships?.[0]?.organization;
+        if (clerkOrg?.id) {
+            return {
+                id: String(clerkOrg.id),
+                name: clerkOrg.name ? String(clerkOrg.name) : undefined,
+                traits: clerkOrg.slug ? { slug: clerkOrg.slug } : undefined,
+            };
+        }
+
+        // Direct claim pairs
+        let groupId: string | null = null;
+        for (const k of GROUP_ID_CLAIMS) {
+            const v = claims[k];
+            if (v == null) continue;
+            if (typeof v === 'string' && v.length > 0) { groupId = v; break; }
+            if (typeof v === 'number') { groupId = String(v); break; }
+        }
+        if (!groupId) return null;
+
+        let groupName: string | undefined;
+        for (const k of GROUP_NAME_CLAIMS) {
+            const v = claims[k];
+            if (typeof v === 'string' && v.length > 0) { groupName = v; break; }
+        }
+
+        return { id: groupId, name: groupName };
+    }
+
+    /**
+     * Derive a group from the email domain. Skips personal-email domains so
+     * a Gmail user doesn't end up in their own one-person company.
+     */
+    private extractGroupFromEmailDomain(email: string): ExtractedGroup | null {
+        if (this.groupMode === 'off' || this.groupMode === 'jwt') return null;
+        const domain = email.split('@')[1]?.toLowerCase().trim();
+        if (!domain) return null;
+        if (PERSONAL_EMAIL_DOMAINS.has(domain)) return null;
+
+        // Use the domain as both the stable id (so the same company is
+        // reused across users) and the name (the backend can pretty-print
+        // it later).
+        return { id: domain, name: domain, traits: { source: 'email-domain' } };
+    }
+
+    private extractGroupFromManualDetail(detail: any): ExtractedGroup | null {
+        if (!detail || typeof detail !== 'object') return null;
+        // Two shapes: either { id, name?, traits? } directly, or nested under a `group` key.
+        const g = detail.group ?? detail;
+        if (!g || typeof g !== 'object') return null;
+        const id = g.id ?? g.groupId ?? g.organizationId ?? g.tenantId ?? g.accountId ?? g.workspaceId ?? g.companyId;
+        if (id == null || (typeof id !== 'string' && typeof id !== 'number')) return null;
+        const out: ExtractedGroup = { id: String(id) };
+        if (typeof g.name === 'string') out.name = g.name;
+        if (g.traits && typeof g.traits === 'object' && !Array.isArray(g.traits)) out.traits = g.traits;
+        return out;
+    }
+
+    private firstString(claims: Record<string, any>, keys: string[]): string | undefined {
+        for (const k of keys) {
+            const v = claims[k];
+            if (typeof v === 'string' && v.length > 0) return v;
+        }
+        return undefined;
+    }
+
+    private firstStringOrArray(claims: Record<string, any>, keys: string[]): string | undefined {
+        for (const k of keys) {
+            const v = claims[k];
+            if (typeof v === 'string' && v.length > 0) return v;
+            if (Array.isArray(v) && v.length > 0) return v.filter(x => typeof x === 'string').join(',');
+        }
+        return undefined;
     }
 
     // ════════════════════════════════════════════════
-    // GUARDED SESSION PROBING (NextAuth only)
+    // Candidate scoring
     // ════════════════════════════════════════════════
 
     /**
-     * Probe NextAuth session endpoint ONLY if NextAuth signals are present.
-     * Signals: `next-auth.session-token` cookie, `__NEXTAUTH` or `__NEXT_DATA__` globals.
-     * This prevents unnecessary 404 errors on non-NextAuth sites.
+     * SAFEGUARD #3: Domain match preference.
+     * SAFEGUARD #4 hook: stickiness wins over fresh scans.
+     *
+     * Higher = more likely to be the real user.
+     * Base scores by source type:
+     *   provider:* / global:__clianta_user / event:clianta:identify  → 100
+     *   provider:cognito-storage                                      → 90
+     *   cookie:*                                                      → 70
+     *   localStorage:* / sessionStorage:*                             → 50
+     * Bonuses:
+     *   +15  email domain matches page hostname
+     *   +25  email matches the sticky-cached email (we trust history)
      */
+    private scoreCandidate(email: string, source: string): number {
+        let base = 50;
+        if (source.startsWith('provider:')) base = 100;
+        else if (source.startsWith('global:')) base = 100;
+        else if (source.startsWith('event:')) base = 100;
+        else if (source.startsWith('cookie:')) base = 70;
+
+        if (this.matchesPageDomain(email)) base += 15;
+
+        try {
+            const sticky = (typeof localStorage !== 'undefined')
+                ? localStorage.getItem(STICKY_EMAIL_KEY)
+                : null;
+            if (sticky && sticky.toLowerCase() === email.toLowerCase()) base += 25;
+        } catch { /* localStorage blocked */ }
+
+        return base;
+    }
+
+    private matchesPageDomain(email: string): boolean {
+        try {
+            if (typeof location === 'undefined') return false;
+            const emailDomain = email.split('@')[1]?.toLowerCase();
+            if (!emailDomain) return false;
+            const hostname = location.hostname.toLowerCase().replace(/^www\./, '');
+            return emailDomain === hostname || hostname.endsWith('.' + emailDomain) || emailDomain.endsWith('.' + hostname);
+        } catch {
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════
+    // SAFEGUARD #2: Third-party SDK blocklist
+    // ════════════════════════════════════════════════
+
+    private isThirdPartySdkKey(key: string): boolean {
+        const k = key.toLowerCase();
+        for (const pattern of THIRD_PARTY_SDK_BLOCKLIST) {
+            if (k.includes(pattern.toLowerCase())) return true;
+        }
+        return false;
+    }
+
+    // ════════════════════════════════════════════════
+    // Commit a winning candidate
+    // ════════════════════════════════════════════════
+
+    private commit(c: Candidate): void {
+        if (!this.tracker) return;
+        // No-op if same email already identified
+        if (this.identifiedEmail && this.identifiedEmail.toLowerCase() === c.email.toLowerCase()) {
+            // We may still need to commit the group if it appeared after the user did.
+            this.maybeCommitGroupForEmail(c);
+            return;
+        }
+
+        this.identifiedEmail = c.email;
+        this.identifiedSource = c.source;
+        this.persistSticky(c.email, c.source);
+
+        // Build the trait payload, including the rich claims and any customFields.
+        const traits: Record<string, unknown> = {};
+        if (c.firstName) traits.firstName = c.firstName;
+        if (c.lastName) traits.lastName = c.lastName;
+        if (c.avatar) traits.avatar = c.avatar;
+        if (c.role) traits.role = c.role;
+        if (c.plan) traits.plan = c.plan;
+        if (c.locale) traits.locale = c.locale;
+        if (c.customFields && Object.keys(c.customFields).length > 0) {
+            traits.customFields = c.customFields;
+        }
+
+        try {
+            this.tracker.identify(c.email, traits);
+        } catch { /* identify error */ }
+
+        // Auto-group: prefer the explicit group on this candidate; fall back
+        // to a standalone __clianta_group global; fall back to the email
+        // domain (skipping personal domains).
+        this.maybeCommitGroupForEmail(c);
+
+        // Cancel any pending polls
+        for (const t of this.pollTimeouts) clearTimeout(t);
+        this.pollTimeouts = [];
+    }
+
+    /**
+     * Decide whether to call tracker.group() for the user we just identified.
+     * Order of preference:
+     *   1. The candidate's own `group` field (came from JWT/provider).
+     *   2. `window.__clianta_group` global.
+     *   3. The user's email domain (only when groupMode is 'auto' or 'domain').
+     */
+    private maybeCommitGroupForEmail(c: Candidate): void {
+        if (this.groupMode === 'off') return;
+        if (!this.tracker) return;
+
+        const standalone = this.scanStandaloneGroup();
+        const group: ExtractedGroup | null =
+            c.group
+            || standalone
+            || this.extractGroupFromEmailDomain(c.email)
+            || null;
+
+        if (!group) return;
+        this.commitGroup(group);
+    }
+
+    private commitGroup(group: ExtractedGroup): void {
+        if (!this.tracker || !group?.id) return;
+        if (this.identifiedGroupId === group.id) return; // already grouped
+
+        this.identifiedGroupId = group.id;
+        this.persistStickyGroup(group);
+
+        const traits: Record<string, unknown> = {};
+        if (group.name) traits.name = group.name;
+        if (group.traits) Object.assign(traits, group.traits);
+
+        try {
+            this.tracker.group(group.id, traits);
+        } catch { /* group error */ }
+    }
+
+    // ════════════════════════════════════════════════
+    // NextAuth probe — auto and aggressive only
+    // ════════════════════════════════════════════════
+
     private async guardedSessionProbe(): Promise<void> {
         if (this.identifiedEmail) return;
 
-        // Check for NextAuth signals before probing
         const hasNextAuthCookie = typeof document !== 'undefined' &&
             (document.cookie.includes('next-auth.session-token') ||
                 document.cookie.includes('__Secure-next-auth.session-token'));
-
         const hasNextAuthGlobal = typeof window !== 'undefined' &&
             ((window as any).__NEXTAUTH != null || (window as any).__NEXT_DATA__ != null);
 
         if (!hasNextAuthCookie && !hasNextAuthGlobal) return;
 
-        // NextAuth detected — safe to probe /api/auth/session
         try {
             const response = await fetch('/api/auth/session', {
                 method: 'GET',
                 credentials: 'include',
                 headers: { 'Accept': 'application/json' },
             });
-
             if (response.ok) {
                 const body = await response.json();
-                // NextAuth returns { user: { name, email, image }, expires }
                 if (body && typeof body === 'object' && Object.keys(body).length > 0) {
-                    const user = this.deepScanForUser(body, 0);
-                    if (user) {
-                        this.identifyUser(user);
+                    const u = this.deepScanForUser(body, 0, false);
+                    if (u) {
+                        this.commit({
+                            ...u,
+                            score: this.scoreCandidate(u.email, 'provider:nextauth-probe'),
+                            source: 'provider:nextauth-probe',
+                        });
                     }
                 }
             }
-        } catch {
-            // Endpoint failed — silently ignore
-        }
+        } catch { /* endpoint failed */ }
     }
 
     // ════════════════════════════════════════════════
-    // AWS COGNITO STORAGE SCANNING
+    // Cognito storage scan
     // ════════════════════════════════════════════════
 
-    /**
-     * Scan localStorage for AWS Cognito / Amplify user data.
-     * Cognito stores tokens under keys like:
-     *   CognitoIdentityServiceProvider.<clientId>.<username>.idToken
-     *   CognitoIdentityServiceProvider.<clientId>.<username>.userData
-     */
-    private checkCognitoStorage(): IdentifiedUser | null {
+    private checkCognitoStorage(): (IdentifiedUser & { group?: ExtractedGroup }) | null {
         try {
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (!key) continue;
 
-                // Look for Cognito ID tokens (contain email in JWT claims)
                 if (key.startsWith('CognitoIdentityServiceProvider.') && key.endsWith('.idToken')) {
                     const value = localStorage.getItem(key);
                     if (value && value.length < MAX_STORAGE_VALUE_SIZE) {
-                        const user = this.extractUserFromToken(value);
-                        if (user) return user;
+                        const u = this.extractUserFromToken(value, true);
+                        if (u) return u;
                     }
                 }
-
-                // Look for Cognito userData (JSON with email attribute)
                 if (key.startsWith('CognitoIdentityServiceProvider.') && key.endsWith('.userData')) {
                     const value = localStorage.getItem(key);
                     if (value && value.length < MAX_STORAGE_VALUE_SIZE) {
                         try {
                             const data = JSON.parse(value);
-                            // Cognito userData format: { UserAttributes: [{ Name: 'email', Value: '...' }] }
                             const attrs = data.UserAttributes || data.attributes || [];
-                            const emailAttr = attrs.find?.((a: any) =>
-                                a.Name === 'email' || a.name === 'email'
-                            );
+                            const emailAttr = attrs.find?.((a: any) => a.Name === 'email' || a.name === 'email');
                             if (emailAttr?.Value && this.isValidEmail(emailAttr.Value)) {
-                                const nameAttr = attrs.find?.((a: any) =>
-                                    a.Name === 'name' || a.name === 'name'
+                                const nameAttr = attrs.find?.((a: any) => a.Name === 'name' || a.name === 'name');
+                                const givenNameAttr = attrs.find?.((a: any) => a.Name === 'given_name' || a.name === 'given_name');
+                                const familyNameAttr = attrs.find?.((a: any) => a.Name === 'family_name' || a.name === 'family_name');
+                                // Cognito custom attributes (e.g. `custom:organization_id`,
+                                // `custom:tenant_id`, `custom:company_id`) are how multi-tenant
+                                // Cognito apps tag a user with their org. Pick the first match.
+                                const orgIdAttr = attrs.find?.((a: any) =>
+                                    /^custom:(organization_id|org_id|tenant_id|account_id|workspace_id|company_id)$/i.test(a?.Name ?? a?.name ?? '')
                                 );
-                                const givenNameAttr = attrs.find?.((a: any) =>
-                                    a.Name === 'given_name' || a.name === 'given_name'
-                                );
-                                const familyNameAttr = attrs.find?.((a: any) =>
-                                    a.Name === 'family_name' || a.name === 'family_name'
+                                const orgNameAttr = attrs.find?.((a: any) =>
+                                    /^custom:(organization_name|org_name|tenant_name|account_name|workspace_name|company_name)$/i.test(a?.Name ?? a?.name ?? '')
                                 );
 
                                 let firstName = givenNameAttr?.Value;
                                 let lastName = familyNameAttr?.Value;
-
                                 if (!firstName && nameAttr?.Value) {
                                     const parts = nameAttr.Value.split(' ');
                                     firstName = parts[0];
                                     lastName = lastName || parts.slice(1).join(' ') || undefined;
                                 }
 
+                                const group: ExtractedGroup | undefined = orgIdAttr?.Value ? {
+                                    id: String(orgIdAttr.Value),
+                                    name: orgNameAttr?.Value ? String(orgNameAttr.Value) : undefined,
+                                } : undefined;
+
+                                // We hand back a Candidate-shaped object so callers can spread it.
                                 return {
                                     email: emailAttr.Value,
                                     firstName: firstName || undefined,
                                     lastName: lastName || undefined,
-                                };
+                                    ...(group ? { group } : {}),
+                                } as IdentifiedUser & { group?: ExtractedGroup };
                             }
                         } catch { /* invalid JSON */ }
                     }
                 }
             }
         } catch { /* storage access failed */ }
-
         return null;
     }
 
     // ════════════════════════════════════════════════
-    // UTILITIES
+    // Utilities
     // ════════════════════════════════════════════════
 
-    /**
-     * Validate email with proper regex.
-     * Rejects: user@v2.0, config@internal, tokens with @ signs.
-     * Accepts: user@domain.com, user@sub.domain.co.uk
-     */
     private isValidEmail(value: string): boolean {
         return EMAIL_REGEX.test(value);
     }

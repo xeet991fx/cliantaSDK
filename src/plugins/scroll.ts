@@ -16,6 +16,7 @@ export class ScrollPlugin extends BasePlugin {
     private maxScrollDepth = 0;
     private pageLoadTime = 0;
     private scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
     private boundHandler: (() => void) | null = null;
     /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
     private navigationHandler: (() => void) | null = null;
@@ -37,6 +38,12 @@ export class ScrollPlugin extends BasePlugin {
             // Handle back/forward navigation
             this.popstateHandler = () => this.resetForNavigation();
             window.addEventListener('popstate', this.popstateHandler);
+
+            // Browsers don't fire scroll events on pages where the document fits
+            // in the viewport — but the visitor still saw 100% of the content.
+            // Run trackScrollDepth() once shortly after mount so short pages
+            // produce 25/50/75/100% milestones too.
+            this.initialCheckTimeout = setTimeout(() => this.trackScrollDepth(), 500);
         }
     }
 
@@ -46,6 +53,10 @@ export class ScrollPlugin extends BasePlugin {
         }
         if (this.scrollTimeout) {
             clearTimeout(this.scrollTimeout);
+        }
+        if (this.initialCheckTimeout) {
+            clearTimeout(this.initialCheckTimeout);
+            this.initialCheckTimeout = null;
         }
         if (this.navigationHandler && typeof window !== 'undefined') {
             window.removeEventListener('clianta:navigation', this.navigationHandler);
@@ -65,6 +76,9 @@ export class ScrollPlugin extends BasePlugin {
         this.milestonesReached.clear();
         this.maxScrollDepth = 0;
         this.pageLoadTime = Date.now();
+        // Re-run the short-page check for the new route
+        if (this.initialCheckTimeout) clearTimeout(this.initialCheckTimeout);
+        this.initialCheckTimeout = setTimeout(() => this.trackScrollDepth(), 500);
     }
 
     private handleScroll(): void {
@@ -83,10 +97,31 @@ export class ScrollPlugin extends BasePlugin {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
         const scrollableHeight = documentHeight - windowHeight;
 
-        // Guard against divide-by-zero on short pages
-        if (scrollableHeight <= 0) return;
+        // Short pages where the entire content fits in the viewport never produce
+        // a scroll event in the browser — but the visitor still saw 100% of the
+        // content. Emit all milestones as "reached" once so the analytics dashboard
+        // doesn't make every short page look like a 0%-scroll bounce.
+        if (scrollableHeight <= 0) {
+            if (this.maxScrollDepth < 100) {
+                this.maxScrollDepth = 100;
+                for (const milestone of SCROLL_MILESTONES) {
+                    if (!this.milestonesReached.has(milestone)) {
+                        this.milestonesReached.add(milestone);
+                        this.track('scroll_depth', `Scrolled ${milestone}%`, {
+                            depth: milestone,
+                            maxDepth: 100,
+                            timeToReach: Date.now() - this.pageLoadTime,
+                            shortPage: true,
+                        });
+                    }
+                }
+            }
+            return;
+        }
 
-        const scrollPercent = Math.floor((scrollTop / scrollableHeight) * 100);
+        // Use Math.round so fractional pixels / browser zoom don't cause us to
+        // miss the 100% milestone (Math.floor would clip 99.6 → 99).
+        const scrollPercent = Math.round((scrollTop / scrollableHeight) * 100);
 
         // Clamp to valid range
         const clampedPercent = Math.max(0, Math.min(100, scrollPercent));

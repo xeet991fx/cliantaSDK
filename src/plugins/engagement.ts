@@ -1,5 +1,18 @@
 /**
  * Clianta SDK - Engagement Plugin
+ *
+ * Tracks user engagement and time-on-page with one event of each type per
+ * page lifecycle (a "page" being either a real navigation or an SPA route
+ * change announced via the `clianta:navigation` event).
+ *
+ *   • `engagement` / "User Engaged" — fires AT MOST ONCE per page when the
+ *     visitor first interacts (mousemove / keydown / touchstart / scroll).
+ *     No more 30s-idle bounce loops emitting duplicate events.
+ *
+ *   • `time_on_page` / "Time Spent" — fires AT MOST ONCE per page on
+ *     beforeunload / pagehide / visibility:hidden. Reports the CUMULATIVE
+ *     visible time across tab-switches, not just the last visible window.
+ *
  * @see SDK_VERSION in core/config.ts
  */
 
@@ -11,54 +24,64 @@ import { BasePlugin } from './base';
  */
 export class EngagementPlugin extends BasePlugin {
     name: PluginName = 'engagement';
+
+    /** Plugin-init time (used for time-to-engage). */
     private pageLoadTime = 0;
-    private engagementStartTime = 0;
-    private isEngaged = false;
-    private engagementTimeout: ReturnType<typeof setTimeout> | null = null;
-    /** Guard: beforeunload + visibilitychange:hidden both fire on tab close — only report once */
-    private unloadReported = false;
+
+    /** Total visible time accumulated across visibility transitions, in ms. */
+    private accumulatedVisibleMs = 0;
+
+    /** Timestamp the page last became visible (or page load). 0 when hidden. */
+    private currentVisibleSince = 0;
+
+    /** Whether the user has interacted at least once on the current page. */
+    private hasEngaged = false;
+
+    /** Whether we've already emitted the "User Engaged" event for the current page. */
+    private engagementReported = false;
+
+    /** Whether we've already emitted the "Time Spent" event for the current page. */
+    private timeOnPageReported = false;
+
     private boundMarkEngaged: (() => void) | null = null;
-    private boundTrackTimeOnPage: (() => void) | null = null;
+    private boundUnloadHandler: (() => void) | null = null;
     private boundVisibilityHandler: (() => void) | null = null;
-    /** SPA navigation — listen for PageViewPlugin's custom event instead of patching history */
     private navigationHandler: (() => void) | null = null;
     private popstateHandler: (() => void) | null = null;
 
     init(tracker: TrackerCore): void {
         super.init(tracker);
         this.pageLoadTime = Date.now();
-        this.engagementStartTime = Date.now();
+        this.currentVisibleSince = Date.now();
 
         if (typeof document === 'undefined' || typeof window === 'undefined') return;
 
-        // Setup engagement detection
+        // Engagement detection — fires "User Engaged" once on first interaction
         this.boundMarkEngaged = this.markEngaged.bind(this);
-        this.boundTrackTimeOnPage = this.trackTimeOnPage.bind(this);
-        this.boundVisibilityHandler = () => {
-            if (document.visibilityState === 'hidden') {
-                this.trackTimeOnPage();
-            } else {
-                // Page is visible again — reset both the time counter and the unload guard
-                this.engagementStartTime = Date.now();
-                this.unloadReported = false;
-            }
-        };
-
         ['mousemove', 'keydown', 'touchstart', 'scroll'].forEach((event) => {
             document.addEventListener(event, this.boundMarkEngaged!, { passive: true });
         });
 
-        // Track time on page before unload
-        window.addEventListener('beforeunload', this.boundTrackTimeOnPage);
+        // Visibility transitions — pause/resume the visible-time accumulator
+        this.boundVisibilityHandler = () => {
+            if (document.visibilityState === 'hidden') {
+                this.pauseVisibleTimer();
+            } else {
+                this.resumeVisibleTimer();
+            }
+        };
         document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
-        // Listen for navigation events dispatched by PageViewPlugin
-        // instead of independently monkey-patching history.pushState
-        this.navigationHandler = () => this.resetForNavigation();
+        // Final flush on navigation away
+        this.boundUnloadHandler = () => this.reportTimeOnPage();
+        window.addEventListener('beforeunload', this.boundUnloadHandler);
+        window.addEventListener('pagehide', this.boundUnloadHandler);
+
+        // SPA navigation — flush the leaving route's metrics, then reset
+        this.navigationHandler = () => this.handleSpaNavigation();
         window.addEventListener('clianta:navigation', this.navigationHandler);
 
-        // Handle back/forward navigation
-        this.popstateHandler = () => this.resetForNavigation();
+        this.popstateHandler = () => this.handleSpaNavigation();
         window.addEventListener('popstate', this.popstateHandler);
     }
 
@@ -68,65 +91,100 @@ export class EngagementPlugin extends BasePlugin {
                 document.removeEventListener(event, this.boundMarkEngaged!);
             });
         }
-        if (this.boundTrackTimeOnPage && typeof window !== 'undefined') {
-            window.removeEventListener('beforeunload', this.boundTrackTimeOnPage);
+        if (typeof window !== 'undefined') {
+            if (this.boundUnloadHandler) {
+                window.removeEventListener('beforeunload', this.boundUnloadHandler);
+                window.removeEventListener('pagehide', this.boundUnloadHandler);
+            }
+            if (this.navigationHandler) {
+                window.removeEventListener('clianta:navigation', this.navigationHandler);
+                this.navigationHandler = null;
+            }
+            if (this.popstateHandler) {
+                window.removeEventListener('popstate', this.popstateHandler);
+                this.popstateHandler = null;
+            }
         }
         if (this.boundVisibilityHandler && typeof document !== 'undefined') {
             document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
         }
-        if (this.navigationHandler && typeof window !== 'undefined') {
-            window.removeEventListener('clianta:navigation', this.navigationHandler);
-            this.navigationHandler = null;
-        }
-        if (this.popstateHandler && typeof window !== 'undefined') {
-            window.removeEventListener('popstate', this.popstateHandler);
-            this.popstateHandler = null;
-        }
-        if (this.engagementTimeout) {
-            clearTimeout(this.engagementTimeout);
-        }
         super.destroy();
     }
 
-    private resetForNavigation(): void {
+    // ════════════════════════════════════════════════
+    // SPA navigation
+    // ════════════════════════════════════════════════
+
+    private handleSpaNavigation(): void {
+        // Flush whatever we have for the leaving route
+        this.reportTimeOnPage();
+
+        // Reset state for the new route
         this.pageLoadTime = Date.now();
-        this.engagementStartTime = Date.now();
-        this.isEngaged = false;
-        this.unloadReported = false;
-        if (this.engagementTimeout) {
-            clearTimeout(this.engagementTimeout);
-            this.engagementTimeout = null;
+        this.currentVisibleSince = (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+            ? 0
+            : Date.now();
+        this.accumulatedVisibleMs = 0;
+        this.hasEngaged = false;
+        this.engagementReported = false;
+        this.timeOnPageReported = false;
+    }
+
+    // ════════════════════════════════════════════════
+    // Visibility timing
+    // ════════════════════════════════════════════════
+
+    private pauseVisibleTimer(): void {
+        if (this.currentVisibleSince > 0) {
+            this.accumulatedVisibleMs += Date.now() - this.currentVisibleSince;
+            this.currentVisibleSince = 0;
         }
     }
+
+    private resumeVisibleTimer(): void {
+        if (this.currentVisibleSince === 0) {
+            this.currentVisibleSince = Date.now();
+        }
+    }
+
+    private getTotalVisibleMs(): number {
+        const live = this.currentVisibleSince > 0 ? Date.now() - this.currentVisibleSince : 0;
+        return this.accumulatedVisibleMs + live;
+    }
+
+    // ════════════════════════════════════════════════
+    // Engagement
+    // ════════════════════════════════════════════════
 
     private markEngaged(): void {
-        if (!this.isEngaged) {
-            this.isEngaged = true;
-            this.track('engagement', 'User Engaged', {
-                timeToEngage: Date.now() - this.pageLoadTime,
-            });
-        }
+        if (this.hasEngaged) return;
+        this.hasEngaged = true;
 
-        // Reset engagement timeout
-        if (this.engagementTimeout) {
-            clearTimeout(this.engagementTimeout);
-        }
-        this.engagementTimeout = setTimeout(() => {
-            this.isEngaged = false;
-        }, 30000); // 30 seconds of inactivity
+        if (this.engagementReported) return;
+        this.engagementReported = true;
+
+        this.track('engagement', 'User Engaged', {
+            timeToEngage: Date.now() - this.pageLoadTime,
+        });
     }
 
-    private trackTimeOnPage(): void {
-        // Guard: beforeunload and visibilitychange:hidden both fire on tab close — only report once
-        if (this.unloadReported) return;
-        this.unloadReported = true;
+    // ════════════════════════════════════════════════
+    // Time on page
+    // ════════════════════════════════════════════════
 
-        const timeSpent = Math.floor((Date.now() - this.engagementStartTime) / 1000);
-        if (timeSpent > 0) {
-            this.track('time_on_page', 'Time Spent', {
-                seconds: timeSpent,
-                engaged: this.isEngaged,
-            });
-        }
+    private reportTimeOnPage(): void {
+        if (this.timeOnPageReported) return;
+        this.timeOnPageReported = true;
+
+        // Capture any in-progress visible interval
+        this.pauseVisibleTimer();
+
+        const totalSeconds = Math.floor(this.accumulatedVisibleMs / 1000);
+        if (totalSeconds <= 0) return;
+
+        this.track('time_on_page', 'Time Spent', {
+            seconds: totalSeconds,
+            engaged: this.hasEngaged,
+        });
     }
 }

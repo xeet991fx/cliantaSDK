@@ -1,6 +1,6 @@
 {
     "name": "@clianta/sdk",
-    "version": "1.7.3",
+    "version": "1.8.0",
     "type": "module",
     "description": "Professional CRM SDK for Clianta - Track visitors, manage contacts, opportunities, and analyze behavior",
     "main": "dist/clianta.cjs.js",
@@ -73,12 +73,12 @@
     "homepage": "https://clianta.online",
     "repository": {
         "type": "git",
-        "url": "https://github.com/xeet991fx/cliantaSDK"
+        "url": "git+https://github.com/xeet991fx/cliantaSDK.git"
     },
     "peerDependencies": {
         "react": ">=17.0.0",
-        "vue": ">=3.0.0",
-        "svelte": ">=4.0.0"
+        "svelte": ">=4.0.0",
+        "vue": ">=3.0.0"
     },
     "peerDependenciesMeta": {
         "react": {
@@ -108,7 +108,8 @@
         "rollup-plugin-dts": "^6.1.0",
         "tslib": "^2.6.2",
         "typescript": "^5.3.3",
-        "vitest": "^1.2.2"
+        "vitest": "^1.2.2",
+        "vue": "^3.5.34"
     },
     "engines": {
         "node": ">=18.0.0"

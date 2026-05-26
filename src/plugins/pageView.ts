@@ -90,12 +90,19 @@ export class PageViewPlugin extends BasePlugin {
     private trackPageView(): void {
         if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-        this.track('page_view', 'Page Viewed', {
+        // Use the page title (or pathname as fallback) as the event NAME so each
+        // page shows up distinctly in analytics dashboards. The previous
+        // hardcoded "Page Viewed" name caused every page to look identical.
+        const eventName = document.title?.trim() || window.location.pathname || 'Page Viewed';
+
+        this.track('page_view', eventName, {
             title: document.title,
             path: window.location.pathname,
             search: window.location.search,
             hash: window.location.hash,
-            referrer: document.referrer || 'direct',
+            // referrer is included on the top-level event by Tracker.track() — we
+            // intentionally don't add a `properties.referrer` here so dashboards
+            // have one canonical referrer field with one canonical default.
             viewport: `${window.innerWidth}x${window.innerHeight}`,
         });
     }

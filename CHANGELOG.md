@@ -5,6 +5,224 @@ All notable changes to the Clianta SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-05-26
+
+This release is a **data-quality** release. After running the SDK on our own
+website for ~30 days we found multiple sources of misleading, wrong, or
+missing tracking data. Every fix below addresses one of those root causes.
+
+### The promise this release ships
+
+Drop the SDK into your app — three steps, zero code changes elsewhere:
+
+1. `npm install @clianta/sdk@1.8.0`
+2. Add the env vars (`NEXT_PUBLIC_CLIANTA_PROJECT_ID`, `NEXT_PUBLIC_CLIANTA_API_ENDPOINT`).
+3. Wrap your root layout with `<CliantaProvider>` (or the equivalent for
+   your framework).
+
+That's it. Page views, scrolls, clicks, engagement, performance, downloads,
+exit-intent, forms, **logins, logouts, the user's company / account /
+tenant association, and rich profile traits (avatar, role, plan, locale,
+plus any custom JWT claim)** are all auto-tracked. You do not need to
+call `tracker.identify()` from your auth code, call `tracker.group()` for
+B2B account tracking, dispatch any events, or write a single line of
+tracking glue.
+
+### Auto-everything: identify, group, traits, logout
+
+The 1.7.x line could only auto-detect logins. 1.8.0 promotes the rest of
+the SDK's CRM surface to "automatic":
+
+- **Auto-group / auto-company** (`autoGroupMode: 'auto'` by default) —
+  the SDK figures out which company / tenant / workspace / account a
+  user belongs to from the same JWT it identified them with, and calls
+  `tracker.group()` on your behalf. Sources tried in order:
+  1. JWT claims: `org_id`, `organization_id`, `tenant_id`, `workspace_id`,
+     `account_id`, `company_id` (with the matching `*_name` fields when
+     present).
+  2. Provider-specific shapes: Clerk's
+     `Clerk.user.organizationMemberships[0].organization` (id / name /
+     slug), Cognito's `custom:organization_id` user attributes,
+     MSAL's `account.tenantId`, Auth0's user object, Keycloak's
+     `tokenParsed`.
+  3. `window.__clianta_group = { id, name?, traits? }` global escape
+     hatch.
+  4. `clianta:group` window event hook (`new CustomEvent('clianta:group',
+     { detail: { id, name, traits } })`).
+  5. **Email-domain fallback** — derive the company from the email
+     domain (`ada@acme.com` → company `acme.com`), with a built-in
+     blocklist of personal-email domains (gmail / yahoo / outlook /
+     icloud / proton / etc.) so individual Gmail users don't end up in
+     their own one-person company.
+
+  Modes: `'auto'` (default) | `'jwt'` (no email-domain fallback) |
+  `'domain'` (email-domain only) | `'off'`.
+
+- **Sticky group cache** — the resolved group is cached in
+  localStorage (`clianta_grp_id`, `clianta_grp_name`) so the next page
+  load re-emits the group without waiting for a fresh JWT scan, and
+  cleared automatically on logout.
+
+- **Rich auto-traits.** The auto-identify scan now lifts the following
+  out of any JWT or provider object and passes them to the CRM contact:
+  - `avatar` — from `picture`, `avatar`, `avatar_url`, `image`,
+    `imageUrl`, `profile_picture`. Clerk's `imageUrl` is also picked up.
+  - `role` — from `role` / `roles` (string or array).
+  - `plan` — from `plan` / `tier` / `subscription_tier`.
+  - `locale` — from `locale` / `language` / `lang`.
+  - **`customFields.*`** — anything else in the JWT that's a primitive
+    or primitive array (e.g. `team_id`, `signup_source`, `is_admin`,
+    `seat_count`) is preserved on the contact's `customFields`. Nested
+    provider state is deliberately skipped so we don't pollute the CRM.
+
+  The backend `/api/public/track/identify` route was extended to map
+  these to the existing `Contact` columns (avatar / role / plan /
+  locale → top-level fields where they exist, everything else under
+  `customFields`).
+
+- **`tracker.reset()` clears `groupId`** — previously it cleared
+  `contactId` but kept the group, so a logout/login on the same browser
+  mis-attributed the new user to the old company.
+
+### Auto-identify: `'auto'` mode (default) with five safeguards
+
+The whole point of auto-identify is the customer never has to wire it into
+their login flow. The 1.7.x default deep-scanned cookies + storage for any
+JWT or email-bearing JSON, which caught most logins but also produced
+"wrong contact" identifications when an Intercom / FullStory / HubSpot
+widget left an email in storage. The new `'auto'` default keeps the wide
+coverage but adds five safeguards that close the false-positive holes:
+
+1. **JWT freshness** — only use tokens whose `exp` is in the future and
+   whose `iat` is within the last 30 days. Stale leftover tokens get
+   ignored.
+2. **Third-party SDK blocklist** — explicitly skip storage keys belonging
+   to Intercom, FullStory, HubSpot, Drift, Segment, Pendo, Userpilot,
+   Mixpanel, Amplitude, Heap, Hotjar, LogRocket, Optimizely, LaunchDarkly,
+   etc. Cuts out the main false-positive vector.
+3. **Domain-match preference** — when multiple email candidates are found,
+   prefer the one whose domain matches the page's hostname (`+15` score
+   bonus). `ada@acme.com` wins over `agent@intercom.io` on `acme.com`.
+4. **Sticky identification** — once identified, cache the email in
+   `localStorage` (`clianta_idm`). On the next load, prefer the cached
+   email until storage proves it has changed. No flapping between
+   candidates.
+5. **Auto-logout** — listen for `storage` events that clear an
+   auth-shaped key. When detected, fire `tracker.reset()` automatically
+   so the next user on the same browser is correctly anonymous, and
+   dispatch a `clianta:logout` window event other code can listen for.
+
+The new `autoIdentifyMode` config has four values:
+- `'auto'` (default) — providers + JWT-only cookie/storage scan + the
+  five safeguards above.
+- `'providers'` — providers only. Zero false positives, lower coverage.
+- `'aggressive'` — `'auto'` PLUS plain-JSON deep scan (the old < 1.8.0
+  default). Use only when your app stores the user object as plain JSON
+  without a JWT.
+- `'off'` — disables auto-identify completely.
+
+### Added
+
+- **`autoIdentifyMode` config option** — see above.
+- **`clianta:identify` window event** — universal manual hook for any auth
+  system the SDK doesn't auto-detect:
+  ```ts
+  window.dispatchEvent(new CustomEvent('clianta:identify', {
+    detail: { email: 'user@example.com', firstName: 'Ada', lastName: 'Lovelace' },
+  }));
+  ```
+- **`clianta:logout` window event** — emitted by the SDK when auto-logout
+  fires; can also be dispatched by app code to manually clear identity.
+- **`SPA Navigation` performance event** — emits on each
+  `clianta:navigation` so SPA route changes are no longer invisible to
+  perf dashboards.
+- **`shortPage: true` flag on scroll milestones** — pages whose content
+  fits in the viewport now emit all four 25/50/75/100 milestones once,
+  instead of being treated as a 0%-scroll bounce.
+- **Stealth transport fallback** — when the primary tracking endpoint
+  returns a `TypeError` / `NetworkError` while `navigator.onLine` is true
+  (the typical signature of uBlock Origin / EasyPrivacy / Brave Shields
+  blocking it), the SDK transparently falls back to
+  `/cdn/fonts/woff2.json` (events) and `/cdn/assets/manifest.json`
+  (identify). Once a transport instance has detected blocking it sticks to
+  the stealth path for the rest of the session, so latency stays flat.
+- **`vue` available as a devDependency** so `tsc --noEmit` is now clean.
+  At runtime `vue` is still treated as an external peer (you bring your
+  own).
+
+### Behaviour changes
+
+- **Page-view event name now reflects the actual page.** The auto pageView
+  plugin previously used the hardcoded string `'Page Viewed'` for every
+  page, so analytics dashboards grouped every URL together. The event name
+  now defaults to `document.title` (or pathname). The `track('page_view',
+  ...)` event type is unchanged. `Tracker.page()` follows the same rule.
+- **`User Engaged` and `time_on_page` are now once-per-page-lifecycle.**
+  The old plugin re-armed `User Engaged` after 30 s of inactivity and
+  re-emitted `time_on_page` on every visibility transition, inflating
+  engagement metrics. New contract:
+  - `User Engaged` fires at most once per page (resets on SPA navigation).
+  - `time_on_page` fires at most once per page on `beforeunload` /
+    `pagehide` / SPA navigation, reporting the **cumulative** visible time
+    across tab-switches. `visibility:hidden` only pauses the timer now.
+
+### Fixed
+
+- **Auto-identify polling extended to ~30 minutes** — old schedule
+  stopped after ~4 minutes, so OAuth round-trips longer than that never
+  identified the user. New schedule: exponential backoff for the first
+  ~5 min, then a 5-minute long-tail.
+- **Scroll plugin: 100% milestone is now reachable.** Switched from
+  `Math.floor` to `Math.round` so a scroll percent that rounds to 99.5+ or
+  99.6 (caused by fractional pixels and browser zoom) finally trips the
+  100% milestone.
+- **LCP / CLS reported once.** Pre-fix the plugin emitted multiple LCP
+  events (one per observer drain) and re-armed CLS on every visibility
+  cycle. Now both report at most once per page lifecycle on
+  visibility:hidden / pagehide / SPA navigation.
+- **Performance plugin is SPA-aware.** Web Vitals observers re-arm on
+  `clianta:navigation`, so SPA routes are no longer invisible to perf
+  dashboards.
+- **Page-view referrer.** Removed the `properties.referrer = 'direct'`
+  default; the canonical referrer now lives only at top-level
+  `event.referrer` so dashboards have one source of truth.
+- **`Tracker.page()` and the auto pageView plugin emit the same event
+  name**, so manual and auto-tracked page views are no longer
+  distinguishable only by their format.
+
+### Internal / dev
+
+- 14 new tests for the safeguards: JWT freshness rejection (expired exp +
+  stale iat), third-party SDK blocklist (Intercom / FullStory / HubSpot),
+  domain-match preference, sticky identification (restore + persist),
+  auto-logout on storage clear (including third-party-key ignore).
+- 302 tests across 21 files, all green.
+- Queue tests now clear both `localStorage` AND `sessionStorage` between
+  cases so retried-flush persists from a prior test can't bleed into the
+  next.
+
+### Server-side companion changes (not in the SDK package)
+
+The SDK is paired with backend changes in the same release that you'll
+want to roll out together for the data-quality fixes to land end-to-end:
+
+- `POST /api/public/track/identify` rebinds `Visitor.contactId` when the
+  same `visitorId` re-identifies as a different contact, and now `$set`s
+  any provided traits on the existing contact (was `$setOnInsert` only).
+- `POST /api/public/track/alias` is implemented (was previously a 404 the
+  SDK called silently).
+- `TrackingEvent` has a new sparse compound unique index on
+  `(workspaceId, properties.eventId)`. `insertMany` handlers tolerate
+  E11000 duplicates so SDK retries / persisted-queue replays no longer
+  inflate `pageViewCount` / `eventCount` or fire duplicate workflows.
+- Stats / visitors endpoints now exclude bots from totals
+  (`?includeBots=true` to override on the visitors list).
+- Tightened the bot UA regex with word boundaries so browsers like
+  `Cubot` / `Robotouch` are no longer flagged.
+- `extractUTMParams` middleware now reads top-level `utmSource` etc.
+  (the shape the SDK has actually been sending), with snake-case
+  fallbacks. UTM-based company attribution finally works.
+
 ## [1.6.0] - 2026-03-01
 
 ### Added

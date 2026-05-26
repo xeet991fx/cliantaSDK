@@ -46,6 +46,73 @@ export interface CliantaConfig {
 
     /** Queue persistence mode: 'session' (default), 'local' (survives browser restart), 'none' */
     persistMode?: 'session' | 'local' | 'none';
+
+    /**
+     * AutoIdentify scanning mode (default: `'auto'`).
+     *
+     * The whole point of auto-identify is that the customer drops the SDK
+     * into their app and never has to call `tracker.identify()` themselves —
+     * regardless of whether they use Clerk, Firebase, NextAuth, a custom
+     * JWT in localStorage, or anything else. The default `'auto'` mode is
+     * tuned for that contract.
+     *
+     *  - `'auto'` (default) — Provider globals + JWT-only scan in cookies
+     *    and storage, with five safeguards that minimise the "wrong email"
+     *    class of false positives:
+     *      1. JWT freshness — only use tokens whose `exp` is in the future
+     *         and whose `iat` is within the last 30 days.
+     *      2. Third-party SDK key blocklist — skips keys belonging to
+     *         Intercom, FullStory, HubSpot, Drift, Segment, Pendo,
+     *         Userpilot, Mixpanel, Amplitude, etc.
+     *      3. Domain-match preference — when multiple email candidates are
+     *         found, prefer the one whose domain matches the page hostname.
+     *      4. Sticky identification — once identified, the email is cached
+     *         in localStorage and preferred on subsequent loads until
+     *         storage proves it has changed.
+     *      5. Auto-logout — when an auth-shaped storage key gets cleared,
+     *         the SDK calls `tracker.reset()` automatically so the next
+     *         user on the same browser is correctly anonymous.
+     *
+     *  - `'providers'` — Provider globals only (Clerk, Firebase, Auth0,
+     *    Supabase, Google GIS, MSAL, Cognito, Keycloak, NextAuth probe,
+     *    `window.__clianta_user`, `clianta:identify` event). Safest mode,
+     *    zero false positives. Lower coverage — won't catch custom JWT
+     *    auth flows.
+     *
+     *  - `'aggressive'` — Adds a plain-JSON deep scan of cookies and
+     *    storage on top of `'auto'`. Highest coverage but more
+     *    false-positive prone. Use only if `'auto'` doesn't pick up your
+     *    auth (e.g. you store the user object as plain JSON without a JWT).
+     *
+     *  - `'off'` — Disables auto-identify completely. Use this if you want
+     *    to call `tracker.identify()` yourself.
+     */
+    autoIdentifyMode?: 'auto' | 'providers' | 'aggressive' | 'off';
+
+    /**
+     * Automatic group (company / account / tenant) association mode.
+     * Default: `'auto'`.
+     *
+     * The SDK will try to figure out which company/account a user belongs to
+     * the same way it figures out their email — from JWT claims, auth
+     * provider globals, a `window.__clianta_group` global, a
+     * `clianta:group` window event, or the user's email domain (skipping
+     * personal domains like gmail.com).
+     *
+     *  - `'auto'`   — try every signal: JWT claims (`org_id`, `tenant_id`,
+     *                 `workspace_id`, `account_id`, `company_id`), provider
+     *                 globals (Clerk `organizationMemberships`, Cognito
+     *                 `custom:organization_id`, Keycloak claims), then
+     *                 `window.__clianta_group`, then the email-domain
+     *                 fallback.
+     *  - `'jwt'`    — only use JWT claims and provider globals (no
+     *                 email-domain fallback).
+     *  - `'domain'` — only use the email-domain fallback. Use this when
+     *                 your business model is "one company per email domain"
+     *                 and you don't want JWT-based grouping.
+     *  - `'off'`    — disable auto-grouping entirely.
+     */
+    autoGroupMode?: 'auto' | 'jwt' | 'domain' | 'off';
 }
 
 export type PluginName =
