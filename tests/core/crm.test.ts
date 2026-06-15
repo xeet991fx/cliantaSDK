@@ -136,7 +136,7 @@ describe('CRMClient', () => {
             const result = await client.getCompanyDeals('company-1');
 
             expect(global.fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/companies/company-1/deals'),
+                expect.stringContaining('/opportunities?companyId=company-1'),
                 expect.any(Object)
             );
             expect(result.data).toHaveLength(1);

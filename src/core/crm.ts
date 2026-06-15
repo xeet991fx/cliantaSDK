@@ -484,11 +484,11 @@ export class CRMClient {
         params?: { page?: number; limit?: number }
     ): Promise<ApiResponse<PaginatedResponse<Opportunity>>> {
         const queryParams = new URLSearchParams();
+        queryParams.set('companyId', companyId);
         if (params?.page) queryParams.set('page', params.page.toString());
         if (params?.limit) queryParams.set('limit', params.limit.toString());
 
-        const query = queryParams.toString();
-        const endpoint = `/api/workspaces/${this.workspaceId}/companies/${companyId}/deals${query ? `?${query}` : ''}`;
+        const endpoint = `/api/workspaces/${this.workspaceId}/opportunities?${queryParams.toString()}`;
 
         return this.request<PaginatedResponse<Opportunity>>(endpoint);
     }
