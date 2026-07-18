@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Event Triggers Manager
+ * Eutexa SDK - Event Triggers Manager
  * Manages event-driven automation and email notifications
  */
 

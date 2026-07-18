@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Exit Intent Plugin
+ * Eutexa SDK - Exit Intent Plugin
  * @see SDK_VERSION in core/config.ts
  */
 
@@ -35,7 +35,7 @@ export class ExitIntentPlugin extends BasePlugin {
             // Listen for navigation events dispatched by PageViewPlugin
             // instead of independently monkey-patching history.pushState
             this.navigationHandler = () => this.resetForNavigation();
-            window.addEventListener('clianta:navigation', this.navigationHandler);
+            window.addEventListener('eutexa:navigation', this.navigationHandler);
 
             // Handle back/forward navigation
             this.popstateHandler = () => this.resetForNavigation();
@@ -48,7 +48,7 @@ export class ExitIntentPlugin extends BasePlugin {
             document.removeEventListener('mouseleave', this.boundHandler);
         }
         if (this.navigationHandler && typeof window !== 'undefined') {
-            window.removeEventListener('clianta:navigation', this.navigationHandler);
+            window.removeEventListener('eutexa:navigation', this.navigationHandler);
             this.navigationHandler = null;
         }
         if (this.popstateHandler && typeof window !== 'undefined') {

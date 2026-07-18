@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Event Queue
+ * Eutexa SDK - Event Queue
  * Handles batching and flushing of events
  * @see SDK_VERSION in core/config.ts
  */

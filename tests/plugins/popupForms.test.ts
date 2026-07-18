@@ -103,7 +103,7 @@ describe('PopupFormsPlugin', () => {
 
             await plugin.init(mockTracker);
 
-            expect(localStorage.getItem).toHaveBeenCalledWith('clianta_shown_forms');
+            expect(localStorage.getItem).toHaveBeenCalledWith('eutexa_shown_forms');
         });
     });
 

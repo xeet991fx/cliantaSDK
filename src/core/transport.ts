@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Transport Layer
+ * Eutexa SDK - Transport Layer
  * Handles sending events to the backend with retry logic.
  *
  * Includes a "stealth" fallback that activates when the primary tracking

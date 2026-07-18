@@ -17,7 +17,7 @@ Event triggers enable automated workflows based on CRM events — similar to Sal
 
 ## Managing Triggers
 
-Triggers are managed through the Clianta dashboard under **Settings → Automations**, or via the backend API.
+Triggers are managed through the Eutexa dashboard under **Settings → Automations**, or via the backend API.
 
 ### Creating a Trigger via API
 

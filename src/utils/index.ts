@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Utility Functions
+ * Eutexa SDK - Utility Functions
  * @see SDK_VERSION in core/config.ts
  */
 

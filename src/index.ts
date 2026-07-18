@@ -1,5 +1,5 @@
 /**
- * Clianta SDK
+ * Eutexa SDK
  * Client-side tracking SDK for CRM — tracks visitors, identifies contacts,
  * captures forms, and writes CRM data from client websites.
  * 
@@ -11,11 +11,11 @@
 
 import { Tracker } from './core/tracker';
 import { ConsentManager } from './consent';
-import type { CliantaConfig, TrackerCore } from './types';
+import type { EutexaConfig, TrackerCore } from './types';
 
 // Export types
 export type {
-    CliantaConfig,
+    EutexaConfig,
     TrackerCore,
     TrackingEvent,
     EventType,
@@ -49,22 +49,22 @@ export type { InboundEventPayload, InboundEventResult, InboundEventType } from '
 let globalInstance: Tracker | null = null;
 
 /**
- * Initialize or get the Clianta tracker instance
+ * Initialize or get the Eutexa tracker instance
  * 
  * @example
  * // Simple initialization
- * const tracker = clianta('your-workspace-id');
+ * const tracker = eutexa('your-workspace-id');
  * 
  * @example
  * // With configuration
- * const tracker = clianta('your-workspace-id', {
+ * const tracker = eutexa('your-workspace-id', {
  *   debug: true,
  *   plugins: ['pageView', 'forms', 'scroll'],
  * });
  * 
  * @example
  * // With consent configuration
- * const tracker = clianta('your-workspace-id', {
+ * const tracker = eutexa('your-workspace-id', {
  *   consent: {
  *     waitForConsent: true,
  *     anonymousMode: true,
@@ -72,7 +72,7 @@ let globalInstance: Tracker | null = null;
  *   cookielessMode: true, // GDPR-friendly mode
  * });
  */
-export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCore {
+export function eutexa(workspaceId: string, config?: EutexaConfig): TrackerCore {
     // Return existing instance if same workspace and no config change
     if (globalInstance && globalInstance.getWorkspaceId() === workspaceId) {
         if (config && Object.keys(config).length > 0) {
@@ -80,7 +80,7 @@ export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCor
             // because the new config is ignored. They must call destroy() first to reconfigure.
             if (typeof console !== 'undefined') {
                 console.warn(
-                    '[Clianta] clianta() called with config on an already-initialized instance ' +
+                    '[Eutexa] eutexa() called with config on an already-initialized instance ' +
                     'for workspace "' + workspaceId + '". The new config was ignored. ' +
                     'Call tracker.destroy() first if you need to reconfigure.'
                 );
@@ -103,9 +103,9 @@ export function clianta(workspaceId: string, config?: CliantaConfig): TrackerCor
 
 // Attach to window for <script> tag usage + AUTO-INIT
 if (typeof window !== 'undefined') {
-    (window as unknown as { clianta: typeof clianta }).clianta = clianta;
-    (window as unknown as { Clianta: { clianta: typeof clianta; Tracker: typeof Tracker; ConsentManager: typeof ConsentManager } }).Clianta = {
-        clianta,
+    (window as unknown as { eutexa: typeof eutexa }).eutexa = eutexa;
+    (window as unknown as { Eutexa: { eutexa: typeof eutexa; Tracker: typeof Tracker; ConsentManager: typeof ConsentManager } }).Eutexa = {
+        eutexa,
         Tracker,
         ConsentManager,
     };
@@ -114,7 +114,7 @@ if (typeof window !== 'undefined') {
     // AUTO-INIT FROM SCRIPT TAG
     // ============================================
     // Enables true plug-and-play:
-    //   <script src="clianta.min.js" data-project-id="YOUR_ID"></script>
+    //   <script src="eutexa.min.js" data-project-id="YOUR_ID"></script>
     // That's it — everything auto-tracks.
 
     const autoInit = () => {
@@ -125,7 +125,7 @@ if (typeof window !== 'undefined') {
         const projectId = script.getAttribute('data-project-id');
         if (!projectId) return;
 
-        const initConfig: CliantaConfig = {
+        const initConfig: EutexaConfig = {
             debug: script.hasAttribute('data-debug'),
         };
 
@@ -139,10 +139,10 @@ if (typeof window !== 'undefined') {
         if (script.hasAttribute('data-cookieless')) initConfig.cookielessMode = true;
         if (script.hasAttribute('data-use-cookies')) initConfig.useCookies = true;
 
-        const instance = clianta(projectId, initConfig);
+        const instance = eutexa(projectId, initConfig);
 
         // Expose the auto-initialized instance globally
-        (window as any).__clianta = instance;
+        (window as any).__eutexa = instance;
     };
 
     // Run after DOM is ready
@@ -154,4 +154,4 @@ if (typeof window !== 'undefined') {
 }
 
 // Default export
-export default clianta;
+export default eutexa;

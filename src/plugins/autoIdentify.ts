@@ -1,10 +1,10 @@
 /**
- * Clianta SDK - Auto-Identify Plugin
+ * Eutexa SDK - Auto-Identify Plugin
  *
  * Detects logged-in users and calls `tracker.identify()` automatically so
  * the SDK consumer never has to instrument their login flow.
  *
- * MODES (configurable via `CliantaConfig.autoIdentifyMode`):
+ * MODES (configurable via `EutexaConfig.autoIdentifyMode`):
  *
  *   'auto'       — DEFAULT. Provider globals + JWT-only scan in cookies
  *                  and storage, gated by five safeguards (below) that
@@ -62,13 +62,13 @@ const MAX_STORAGE_VALUE_SIZE = 50_000;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** localStorage key the plugin uses to remember the identified email across reloads. */
-const STICKY_EMAIL_KEY = 'clianta_idm';
+const STICKY_EMAIL_KEY = 'eutexa_idm';
 /** localStorage key the plugin uses to remember which storage entry produced that email. */
-const STICKY_SOURCE_KEY = 'clianta_idm_src';
+const STICKY_SOURCE_KEY = 'eutexa_idm_src';
 /** localStorage key the plugin uses to remember the identified group across reloads. */
-const STICKY_GROUP_ID_KEY = 'clianta_grp_id';
+const STICKY_GROUP_ID_KEY = 'eutexa_grp_id';
 /** localStorage key the plugin uses to remember the identified group name across reloads. */
-const STICKY_GROUP_NAME_KEY = 'clianta_grp_name';
+const STICKY_GROUP_NAME_KEY = 'eutexa_grp_name';
 
 /** JWT/user object fields containing email */
 const EMAIL_CLAIMS = ['email', 'preferred_username', 'user_email', 'mail', 'emailAddress', 'e_mail'];
@@ -267,7 +267,7 @@ export class AutoIdentifyPlugin extends BasePlugin {
 
         if (this.mode === 'off') return;
 
-        // Manual hook — apps can dispatch CustomEvent('clianta:identify', { detail: {...} })
+        // Manual hook — apps can dispatch CustomEvent('eutexa:identify', { detail: {...} })
         this.identifyHookHandler = (event: Event) => {
             const detail = (event as CustomEvent)?.detail;
             if (!detail || typeof detail !== 'object') return;
@@ -288,13 +288,13 @@ export class AutoIdentifyPlugin extends BasePlugin {
             this.commit({
                 ...traits,
                 score: 1000, // manual hook always wins
-                source: 'event:clianta:identify',
+                source: 'event:eutexa:identify',
                 group: this.extractGroupFromManualDetail(detail) ?? undefined,
             });
         };
-        window.addEventListener('clianta:identify', this.identifyHookHandler);
+        window.addEventListener('eutexa:identify', this.identifyHookHandler);
 
-        // Manual group hook — apps can dispatch CustomEvent('clianta:group', { detail: { id, name, traits } })
+        // Manual group hook — apps can dispatch CustomEvent('eutexa:group', { detail: { id, name, traits } })
         this.groupHookHandler = (event: Event) => {
             const detail = (event as CustomEvent)?.detail;
             const group = this.extractGroupFromManualDetail(detail);
@@ -302,11 +302,11 @@ export class AutoIdentifyPlugin extends BasePlugin {
 
             this.commitGroup(group);
         };
-        window.addEventListener('clianta:group', this.groupHookHandler);
+        window.addEventListener('eutexa:group', this.groupHookHandler);
 
         // Manual logout hook
-        this.logoutHookHandler = () => this.handleLogout('event:clianta:logout');
-        window.addEventListener('clianta:logout', this.logoutHookHandler);
+        this.logoutHookHandler = () => this.handleLogout('event:eutexa:logout');
+        window.addEventListener('eutexa:logout', this.logoutHookHandler);
 
         // 0. Restore sticky identification — if we identified a user on a previous
         //    page load, prefer them immediately. This eliminates flapping between
@@ -332,15 +332,15 @@ export class AutoIdentifyPlugin extends BasePlugin {
                 this.storageHandler = null;
             }
             if (this.identifyHookHandler) {
-                window.removeEventListener('clianta:identify', this.identifyHookHandler);
+                window.removeEventListener('eutexa:identify', this.identifyHookHandler);
                 this.identifyHookHandler = null;
             }
             if (this.groupHookHandler) {
-                window.removeEventListener('clianta:group', this.groupHookHandler);
+                window.removeEventListener('eutexa:group', this.groupHookHandler);
                 this.groupHookHandler = null;
             }
             if (this.logoutHookHandler) {
-                window.removeEventListener('clianta:logout', this.logoutHookHandler);
+                window.removeEventListener('eutexa:logout', this.logoutHookHandler);
                 this.logoutHookHandler = null;
             }
         }
@@ -495,9 +495,9 @@ export class AutoIdentifyPlugin extends BasePlugin {
         this.schedulePollChecks();
 
         // Surface the logout to the rest of the page in case other code wants it.
-        if (typeof window !== 'undefined' && reason !== 'event:clianta:logout') {
+        if (typeof window !== 'undefined' && reason !== 'event:eutexa:logout') {
             try {
-                window.dispatchEvent(new Event('clianta:logout'));
+                window.dispatchEvent(new Event('eutexa:logout'));
             } catch { /* CustomEvent unsupported (very old browsers) */ }
         }
     }
@@ -742,9 +742,9 @@ export class AutoIdentifyPlugin extends BasePlugin {
             }
         } catch { /* Keycloak not available */ }
 
-        // window.__clianta_user — universal escape hatch
+        // window.__eutexa_user — universal escape hatch
         try {
-            const manualUser = win.__clianta_user;
+            const manualUser = win.__eutexa_user;
             if (manualUser?.email && typeof manualUser.email === 'string' && this.isValidEmail(manualUser.email)) {
                 const traits: IdentifiedUser = this.extractUserFromClaims(manualUser) ?? { email: manualUser.email };
                 const group = this.extractGroupFromManualDetail(manualUser) ?? this.extractGroupFromClaims(manualUser) ?? undefined;
@@ -754,13 +754,13 @@ export class AutoIdentifyPlugin extends BasePlugin {
                     firstName: typeof manualUser.firstName === 'string' ? manualUser.firstName : traits.firstName,
                     lastName: typeof manualUser.lastName === 'string' ? manualUser.lastName : traits.lastName,
                     score: 1000, // manual override always wins
-                    source: 'global:__clianta_user',
+                    source: 'global:__eutexa_user',
                     group,
                 });
             }
         } catch { /* manual user not set */ }
 
-        // window.__clianta_group — explicit group escape hatch (fires alongside whatever
+        // window.__eutexa_group — explicit group escape hatch (fires alongside whatever
         // user is detected). We push a "userless" candidate scored 0, so it doesn't
         // win identify but DOES surface the group in pickBestCandidate's chosen entry
         // when that entry has no group of its own. We handle this in pickBestCandidate.
@@ -769,13 +769,13 @@ export class AutoIdentifyPlugin extends BasePlugin {
     }
 
     /**
-     * Pull a standalone group from `window.__clianta_group` — used when the
+     * Pull a standalone group from `window.__eutexa_group` — used when the
      * customer can give us the group but the user is detected separately.
      */
     private scanStandaloneGroup(): ExtractedGroup | null {
         if (typeof window === 'undefined') return null;
         try {
-            const g = (window as any).__clianta_group;
+            const g = (window as any).__eutexa_group;
             if (g) {
                 const fromGlobal = this.extractGroupFromManualDetail(g);
                 if (fromGlobal) return fromGlobal;
@@ -1113,7 +1113,7 @@ export class AutoIdentifyPlugin extends BasePlugin {
      *
      * Higher = more likely to be the real user.
      * Base scores by source type:
-     *   provider:* / global:__clianta_user / event:clianta:identify  → 100
+     *   provider:* / global:__eutexa_user / event:eutexa:identify  → 100
      *   provider:cognito-storage                                      → 90
      *   cookie:*                                                      → 70
      *   localStorage:* / sessionStorage:*                             → 50
@@ -1198,7 +1198,7 @@ export class AutoIdentifyPlugin extends BasePlugin {
         } catch { /* identify error */ }
 
         // Auto-group: prefer the explicit group on this candidate; fall back
-        // to a standalone __clianta_group global; fall back to the email
+        // to a standalone __eutexa_group global; fall back to the email
         // domain (skipping personal domains).
         this.maybeCommitGroupForEmail(c);
 
@@ -1211,7 +1211,7 @@ export class AutoIdentifyPlugin extends BasePlugin {
      * Decide whether to call tracker.group() for the user we just identified.
      * Order of preference:
      *   1. The candidate's own `group` field (came from JWT/provider).
-     *   2. `window.__clianta_group` global.
+     *   2. `window.__eutexa_group` global.
      *   3. The user's email domain (only when groupMode is 'auto' or 'domain').
      */
     private maybeCommitGroupForEmail(c: Candidate): void {

@@ -1,11 +1,11 @@
 /**
- * Clianta SDK - Debug Logger
+ * Eutexa SDK - Debug Logger
  * @see SDK_VERSION in core/config.ts
  */
 
 import type { Logger, LogLevel } from '../types';
 
-const LOG_PREFIX = '[Clianta]';
+const LOG_PREFIX = '[Eutexa]';
 
 const LOG_STYLES = {
     debug: 'color: #6b7280; font-weight: normal;',

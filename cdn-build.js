@@ -18,7 +18,7 @@ const MAJOR_VERSION = SDK_VERSION.split('.')[0];
 const DIST_DIR = path.resolve(__dirname, 'dist');
 const CDN_DIR = path.resolve(__dirname, 'cdn');
 
-const UMD_SOURCE = path.join(DIST_DIR, 'clianta.umd.min.js');
+const UMD_SOURCE = path.join(DIST_DIR, 'eutexa.umd.min.js');
 
 function generateSRI(filePath) {
   const content = fs.readFileSync(filePath);
@@ -33,7 +33,7 @@ function ensureDir(dir) {
 }
 
 function main() {
-  console.log(`\n📦 Clianta SDK CDN Build v${SDK_VERSION}\n`);
+  console.log(`\n📦 Eutexa SDK CDN Build v${SDK_VERSION}\n`);
 
   if (!fs.existsSync(UMD_SOURCE)) {
     console.error(`❌ UMD build not found at ${UMD_SOURCE}`);
@@ -41,19 +41,19 @@ function main() {
     process.exit(1);
   }
 
-  // cdn/sdk/v1/clianta.min.js       (latest v1)
-  // cdn/sdk/v1.4.0/clianta.min.js   (pinned version)
+  // cdn/sdk/v1/eutexa.min.js       (latest v1)
+  // cdn/sdk/v1.4.0/eutexa.min.js   (pinned version)
   const versionedDir = path.join(CDN_DIR, 'sdk', `v${SDK_VERSION}`);
   const majorDir = path.join(CDN_DIR, 'sdk', `v${MAJOR_VERSION}`);
 
   ensureDir(versionedDir);
   ensureDir(majorDir);
 
-  const versionedFile = path.join(versionedDir, 'clianta.min.js');
+  const versionedFile = path.join(versionedDir, 'eutexa.min.js');
   fs.copyFileSync(UMD_SOURCE, versionedFile);
   console.log(`✅ Copied to ${path.relative(process.cwd(), versionedFile)}`);
 
-  const majorFile = path.join(majorDir, 'clianta.min.js');
+  const majorFile = path.join(majorDir, 'eutexa.min.js');
   fs.copyFileSync(UMD_SOURCE, majorFile);
   console.log(`✅ Copied to ${path.relative(process.cwd(), majorFile)}`);
 
@@ -64,11 +64,11 @@ function main() {
     version: SDK_VERSION,
     buildDate: new Date().toISOString(),
     files: {
-      [`sdk/v${SDK_VERSION}/clianta.min.js`]: {
+      [`sdk/v${SDK_VERSION}/eutexa.min.js`]: {
         size: fs.statSync(versionedFile).size,
         integrity: sriHash,
       },
-      [`sdk/v${MAJOR_VERSION}/clianta.min.js`]: {
+      [`sdk/v${MAJOR_VERSION}/eutexa.min.js`]: {
         size: fs.statSync(majorFile).size,
         integrity: sriHash,
       },
@@ -80,10 +80,10 @@ function main() {
   console.log(`✅ Manifest written to ${path.relative(process.cwd(), manifestPath)}`);
 
   console.log('\n📋 Script Tag (with SRI):');
-  console.log(`<script src="https://cdn.clianta.online/sdk/v${MAJOR_VERSION}/clianta.min.js" integrity="${sriHash}" crossorigin="anonymous"></script>`);
+  console.log(`<script src="https://cdn.eutexa.com/sdk/v${MAJOR_VERSION}/eutexa.min.js" integrity="${sriHash}" crossorigin="anonymous"></script>`);
 
   console.log(`\n📋 Pinned Version:`);
-  console.log(`<script src="https://cdn.clianta.online/sdk/v${SDK_VERSION}/clianta.min.js" integrity="${sriHash}" crossorigin="anonymous"></script>\n`);
+  console.log(`<script src="https://cdn.eutexa.com/sdk/v${SDK_VERSION}/eutexa.min.js" integrity="${sriHash}" crossorigin="anonymous"></script>\n`);
 }
 
 main();

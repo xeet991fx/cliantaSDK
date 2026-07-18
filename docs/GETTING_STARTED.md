@@ -1,13 +1,13 @@
-# Clianta SDK — Getting Started
+# Eutexa SDK — Getting Started
 
 ## Installation
 
 ```bash
-npm install @clianta/sdk
+npm install @eutexa/sdk
 # or
-yarn add @clianta/sdk
+yarn add @eutexa/sdk
 # or
-pnpm add @clianta/sdk
+pnpm add @eutexa/sdk
 ```
 
 ---
@@ -23,23 +23,23 @@ Each framework has its own env vars, file paths, and entry points. Pick yours be
 **Environment Variables** — set in `.env` or your hosting dashboard (Vercel, Netlify, etc.):
 
 ```bash
-NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
-NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+NEXT_PUBLIC_EUTEXA_PROJECT_ID=your-project-id
+NEXT_PUBLIC_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — wrap your app in `app/layout.tsx`:
 
 ```tsx
 // app/layout.tsx
-import { CliantaProvider } from '@clianta/sdk/react';
+import { EutexaProvider } from '@eutexa/sdk/react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}>
+        <EutexaProvider projectId={process.env.NEXT_PUBLIC_EUTEXA_PROJECT_ID!}>
           {children}
-        </CliantaProvider>
+        </EutexaProvider>
       </body>
     </html>
   );
@@ -52,8 +52,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — wrap your app in `src/main.tsx`:
@@ -62,14 +62,14 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { CliantaProvider } from '@clianta/sdk/react';
+import { EutexaProvider } from '@eutexa/sdk/react';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <CliantaProvider projectId={import.meta.env.VITE_CLIANTA_PROJECT_ID}>
+    <EutexaProvider projectId={import.meta.env.VITE_EUTEXA_PROJECT_ID}>
       <App />
-    </CliantaProvider>
+    </EutexaProvider>
   </React.StrictMode>
 );
 ```
@@ -78,10 +78,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
 ```tsx
 // src/components/MyComponent.tsx
-import { useClianta } from '@clianta/sdk/react';
+import { useEutexa } from '@eutexa/sdk/react';
 
 function MyComponent() {
-  const tracker = useClianta();
+  const tracker = useEutexa();
 
   const handleClick = () => {
     tracker?.track('button_click', 'CTA Button', { page: 'home' });
@@ -98,8 +98,8 @@ function MyComponent() {
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — register the plugin in `src/main.ts`:
@@ -107,12 +107,12 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```typescript
 // src/main.ts
 import { createApp } from 'vue';
-import { CliantaPlugin } from '@clianta/sdk/vue';
+import { EutexaPlugin } from '@eutexa/sdk/vue';
 import App from './App.vue';
 
 const app = createApp(App);
-app.use(CliantaPlugin, {
-  projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
+app.use(EutexaPlugin, {
+  projectId: import.meta.env.VITE_EUTEXA_PROJECT_ID,
 });
 app.mount('#app');
 ```
@@ -122,9 +122,9 @@ app.mount('#app');
 ```vue
 <!-- src/components/MyComponent.vue -->
 <script setup>
-import { useCliantaTrack } from '@clianta/sdk/vue';
+import { useEutexaTrack } from '@eutexa/sdk/vue';
 
-const track = useCliantaTrack();
+const track = useEutexaTrack();
 
 function handleClick() {
   track('button_click', 'CTA', { location: 'header' });
@@ -142,27 +142,27 @@ function handleClick() {
 // src/environments/environment.ts
 export const environment = {
   production: false,
-  cliantaProjectId: 'your-project-id',
-  cliantaApiEndpoint: 'https://your-crm-backend.com',
+  eutexaProjectId: 'your-project-id',
+  eutexaApiEndpoint: 'https://your-crm-backend.com',
 };
 ```
 
-**Integration** — create a service at `src/app/clianta.service.ts`:
+**Integration** — create a service at `src/app/eutexa.service.ts`:
 
 ```typescript
-// src/app/clianta.service.ts
+// src/app/eutexa.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
-import { createCliantaTracker, type CliantaTrackerInstance } from '@clianta/sdk/angular';
+import { createEutexaTracker, type EutexaTrackerInstance } from '@eutexa/sdk/angular';
 import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
-export class CliantaService implements OnDestroy {
-  private instance: CliantaTrackerInstance;
+export class EutexaService implements OnDestroy {
+  private instance: EutexaTrackerInstance;
 
   constructor() {
-    this.instance = createCliantaTracker({
-      projectId: environment.cliantaProjectId,
-      apiEndpoint: environment.cliantaApiEndpoint,
+    this.instance = createEutexaTracker({
+      projectId: environment.eutexaProjectId,
+      apiEndpoint: environment.eutexaApiEndpoint,
     });
   }
 
@@ -189,8 +189,8 @@ export class CliantaService implements OnDestroy {
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — initialize in `src/routes/+layout.svelte`:
@@ -198,15 +198,15 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { initClianta } from '@clianta/sdk/svelte';
+  import { initEutexa } from '@eutexa/sdk/svelte';
   import { setContext } from 'svelte';
 
-  const clianta = initClianta({
-    projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
-    apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT,
+  const eutexa = initEutexa({
+    projectId: import.meta.env.VITE_EUTEXA_PROJECT_ID,
+    apiEndpoint: import.meta.env.VITE_EUTEXA_API_ENDPOINT,
   });
 
-  setContext('clianta', clianta);
+  setContext('eutexa', eutexa);
 </script>
 
 <slot />
@@ -218,10 +218,10 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 <!-- src/routes/dashboard/+page.svelte -->
 <script>
   import { getContext } from 'svelte';
-  const clianta = getContext('clianta');
+  const eutexa = getContext('eutexa');
 
   function handleClick() {
-    clianta.track('button_click', 'CTA');
+    eutexa.track('button_click', 'CTA');
   }
 </script>
 

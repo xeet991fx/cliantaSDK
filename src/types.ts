@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Type Definitions
+ * Eutexa SDK - Type Definitions
  * @see SDK_VERSION in core/config.ts
  */
 
@@ -7,7 +7,7 @@
 // CONFIGURATION TYPES
 // ============================================
 
-export interface CliantaConfig {
+export interface EutexaConfig {
     /** Project ID (required for config file pattern) */
     projectId?: string;
 
@@ -75,7 +75,7 @@ export interface CliantaConfig {
      *
      *  - `'providers'` — Provider globals only (Clerk, Firebase, Auth0,
      *    Supabase, Google GIS, MSAL, Cognito, Keycloak, NextAuth probe,
-     *    `window.__clianta_user`, `clianta:identify` event). Safest mode,
+     *    `window.__eutexa_user`, `eutexa:identify` event). Safest mode,
      *    zero false positives. Lower coverage — won't catch custom JWT
      *    auth flows.
      *
@@ -95,15 +95,15 @@ export interface CliantaConfig {
      *
      * The SDK will try to figure out which company/account a user belongs to
      * the same way it figures out their email — from JWT claims, auth
-     * provider globals, a `window.__clianta_group` global, a
-     * `clianta:group` window event, or the user's email domain (skipping
+     * provider globals, a `window.__eutexa_group` global, a
+     * `eutexa:group` window event, or the user's email domain (skipping
      * personal domains like gmail.com).
      *
      *  - `'auto'`   — try every signal: JWT claims (`org_id`, `tenant_id`,
      *                 `workspace_id`, `account_id`, `company_id`), provider
      *                 globals (Clerk `organizationMemberships`, Cognito
      *                 `custom:organization_id`, Keycloak claims), then
-     *                 `window.__clianta_group`, then the email-domain
+     *                 `window.__eutexa_group`, then the email-domain
      *                 fallback.
      *  - `'jwt'`    — only use JWT claims and provider globals (no
      *                 email-domain fallback).
@@ -341,7 +341,7 @@ export interface TrackerCore {
     reset(): void;
 
     /** Get current configuration */
-    getConfig(): CliantaConfig;
+    getConfig(): EutexaConfig;
 
     /** Get workspace ID */
     getWorkspaceId(): string;

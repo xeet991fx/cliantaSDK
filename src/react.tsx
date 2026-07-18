@@ -1,7 +1,7 @@
 /**
- * Clianta SDK - React Integration
+ * Eutexa SDK - React Integration
  * 
- * TRUE PLUG-AND-PLAY: Just wrap your app with <CliantaProvider projectId="xxx" />
+ * TRUE PLUG-AND-PLAY: Just wrap your app with <EutexaProvider projectId="xxx" />
  * and everything auto-tracks — page views, forms, clicks, scroll, engagement,
  * downloads, exit intent, errors, performance. Zero manual code needed.
  */
@@ -19,19 +19,19 @@ import {
     type ReactNode,
     type ErrorInfo,
 } from 'react';
-import { clianta } from './index';
-import type { CliantaConfig, TrackerCore } from './types';
+import { eutexa } from './index';
+import type { EutexaConfig, TrackerCore } from './types';
 
 // ============================================
 // CONTEXT
 // ============================================
 
-interface CliantaContextValue {
+interface EutexaContextValue {
     tracker: TrackerCore | null;
     isReady: boolean;
 }
 
-const CliantaContext = createContext<CliantaContextValue>({
+const EutexaContext = createContext<EutexaContextValue>({
     tracker: null,
     isReady: false,
 });
@@ -53,7 +53,7 @@ interface ErrorBoundaryState {
 /**
  * Internal ErrorBoundary — SDK crashes never break the host app.
  */
-class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class EutexaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     constructor(props: ErrorBoundaryProps) {
         super(props);
         this.state = { hasError: false };
@@ -64,7 +64,7 @@ class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('[Clianta] SDK error caught by ErrorBoundary:', error);
+        console.error('[Eutexa] SDK error caught by ErrorBoundary:', error);
         this.props.onError?.(error, errorInfo);
     }
 
@@ -80,15 +80,15 @@ class CliantaErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 // PROVIDER
 // ============================================
 
-export interface CliantaProviderProps {
+export interface EutexaProviderProps {
     /** Project/workspace ID — required */
     projectId: string;
-    /** API endpoint URL (e.g. https://api.clianta.online) */
+    /** API endpoint URL (e.g. https://api.eutexa.com) */
     apiEndpoint?: string;
     /** Enable debug logging (default: false) */
     debug?: boolean;
     /** Full config for advanced usage (optional — most users don't need this) */
-    config?: Omit<CliantaConfig, 'projectId'>;
+    config?: Omit<EutexaConfig, 'projectId'>;
     /** React children */
     children: ReactNode;
     /** Error handler (optional) */
@@ -96,41 +96,41 @@ export interface CliantaProviderProps {
 }
 
 /**
- * CliantaProvider — Plug-and-play tracking for React/Next.js
+ * EutexaProvider — Plug-and-play tracking for React/Next.js
  * 
  * Just wrap your app. Everything auto-tracks. Done.
  * 
  * @example
- * <CliantaProvider
- *   projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}
- *   apiEndpoint={process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT!}
+ * <EutexaProvider
+ *   projectId={process.env.NEXT_PUBLIC_EUTEXA_PROJECT_ID!}
+ *   apiEndpoint={process.env.NEXT_PUBLIC_EUTEXA_API_ENDPOINT!}
  * >
  *   {children}
- * </CliantaProvider>
+ * </EutexaProvider>
  */
-export function CliantaProvider({ projectId, apiEndpoint, debug, config, children, onError }: CliantaProviderProps) {
+export function EutexaProvider({ projectId, apiEndpoint, debug, config, children, onError }: EutexaProviderProps) {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
     const [isReady, setIsReady] = useState(false);
     const trackerRef = useRef<TrackerCore | null>(null);
 
     useEffect(() => {
         if (!projectId) {
-            console.error('[Clianta] Missing projectId prop on CliantaProvider');
+            console.error('[Eutexa] Missing projectId prop on EutexaProvider');
             return;
         }
 
         try {
-            const options: CliantaConfig = {
+            const options: EutexaConfig = {
                 debug: debug ?? false,
                 ...config, // advanced config overrides
                 ...(apiEndpoint ? { apiEndpoint } : {}),
             };
-            const instance = clianta(projectId, options);
+            const instance = eutexa(projectId, options);
             trackerRef.current = instance;
             setTracker(instance);
             setIsReady(true);
         } catch (error) {
-            console.error('[Clianta] Failed to initialize SDK:', error);
+            console.error('[Eutexa] Failed to initialize SDK:', error);
             onError?.(error as Error, { componentStack: '' } as ErrorInfo);
         }
 
@@ -143,11 +143,11 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
     }, [projectId]);
 
     return (
-        <CliantaErrorBoundary onError={onError}>
-            <CliantaContext.Provider value={{ tracker, isReady }}>
+        <EutexaErrorBoundary onError={onError}>
+            <EutexaContext.Provider value={{ tracker, isReady }}>
                 {children}
-            </CliantaContext.Provider>
-        </CliantaErrorBoundary>
+            </EutexaContext.Provider>
+        </EutexaErrorBoundary>
     );
 }
 
@@ -156,27 +156,27 @@ export function CliantaProvider({ projectId, apiEndpoint, debug, config, childre
 // ============================================
 
 /**
- * useClianta — Access the tracker instance
+ * useEutexa — Access the tracker instance
  */
-export function useClianta(): TrackerCore | null {
-    const { tracker } = useContext(CliantaContext);
+export function useEutexa(): TrackerCore | null {
+    const { tracker } = useContext(EutexaContext);
     return tracker;
 }
 
 /**
- * useCliantaReady — Check if SDK is initialized
+ * useEutexaReady — Check if SDK is initialized
  */
-export function useCliantaReady(): { isReady: boolean; tracker: TrackerCore | null } {
-    const { tracker, isReady } = useContext(CliantaContext);
+export function useEutexaReady(): { isReady: boolean; tracker: TrackerCore | null } {
+    const { tracker, isReady } = useContext(EutexaContext);
     return { isReady, tracker };
 }
 
 /**
- * useCliantaTrack — Quick tracking hook
+ * useEutexaTrack — Quick tracking hook
  * Stable function reference (useCallback) — safe to use as a dependency or pass as a prop.
  */
-export function useCliantaTrack() {
-    const tracker = useClianta();
+export function useEutexaTrack() {
+    const tracker = useEutexa();
     return useCallback(
         (eventType: string, eventName: string, properties?: Record<string, unknown>) => {
             tracker?.track(eventType, eventName, properties);
@@ -186,4 +186,4 @@ export function useCliantaTrack() {
 }
 
 // Re-export types for convenience
-export type { CliantaConfig, TrackerCore };
+export type { EutexaConfig, TrackerCore };

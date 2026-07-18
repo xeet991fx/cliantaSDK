@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - CRM API Client
+ * Eutexa SDK - CRM API Client
  * @see SDK_VERSION in core/config.ts
  */
 

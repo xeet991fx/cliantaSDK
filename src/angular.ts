@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Angular Integration
+ * Eutexa SDK - Angular Integration
  *
  * Provides helpers for Angular 16+ integration.
  * Since Angular uses decorators and DI that require @angular/core as a dependency,
@@ -8,15 +8,15 @@
  * @example
  * // In your Angular service:
  * import { Injectable, OnDestroy } from '@angular/core';
- * import { createCliantaTracker, type CliantaTrackerInstance } from '@clianta/sdk/angular';
+ * import { createEutexaTracker, type EutexaTrackerInstance } from '@eutexa/sdk/angular';
  *
  * @Injectable({ providedIn: 'root' })
- * export class CliantaService implements OnDestroy {
- *   private instance: CliantaTrackerInstance;
+ * export class EutexaService implements OnDestroy {
+ *   private instance: EutexaTrackerInstance;
  *
  *   constructor() {
- *     this.instance = createCliantaTracker({
- *       projectId: environment.cliantaProjectId,
+ *     this.instance = createEutexaTracker({
+ *       projectId: environment.eutexaProjectId,
  *     });
  *   }
  *
@@ -36,29 +36,29 @@
  * }
  */
 
-import { clianta } from './index';
-import type { CliantaConfig, TrackerCore } from './types';
+import { eutexa } from './index';
+import type { EutexaConfig, TrackerCore } from './types';
 
-export interface CliantaTrackerInstance {
+export interface EutexaTrackerInstance {
     /** The tracker instance (null if projectId was missing) */
     tracker: TrackerCore | null;
     /** Flush pending events and clean up */
     destroy: () => void;
 }
 
-export interface CliantaAngularConfig extends CliantaConfig {
+export interface EutexaAngularConfig extends EutexaConfig {
     /** Project/workspace ID (required) */
     projectId: string;
 }
 
 /**
- * Create a Clianta tracker instance for use in Angular services.
+ * Create a Eutexa tracker instance for use in Angular services.
  *
  * @param config - Configuration including projectId
  * @returns Object with tracker instance and destroy method
  *
  * @example
- * const instance = createCliantaTracker({
+ * const instance = createEutexaTracker({
  *   projectId: 'your-project-id',
  * });
  *
@@ -66,14 +66,14 @@ export interface CliantaAngularConfig extends CliantaConfig {
  * // On cleanup:
  * instance.destroy();
  */
-export function createCliantaTracker(config: CliantaAngularConfig): CliantaTrackerInstance {
+export function createEutexaTracker(config: EutexaAngularConfig): EutexaTrackerInstance {
     if (!config.projectId) {
-        console.error('[Clianta] Missing projectId in Angular config');
+        console.error('[Eutexa] Missing projectId in Angular config');
         return { tracker: null, destroy: () => { } };
     }
 
     const { projectId, ...options } = config;
-    const tracker = clianta(projectId, options);
+    const tracker = eutexa(projectId, options);
 
     return {
         tracker,
@@ -111,4 +111,4 @@ export function createIdentifyFn(tracker: TrackerCore | null) {
 }
 
 // Re-export types for convenience
-export type { CliantaConfig, TrackerCore };
+export type { EutexaConfig, TrackerCore };

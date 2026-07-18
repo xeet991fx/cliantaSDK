@@ -1,9 +1,9 @@
 /**
- * Clianta SDK - Engagement Plugin
+ * Eutexa SDK - Engagement Plugin
  *
  * Tracks user engagement and time-on-page with one event of each type per
  * page lifecycle (a "page" being either a real navigation or an SPA route
- * change announced via the `clianta:navigation` event).
+ * change announced via the `eutexa:navigation` event).
  *
  *   • `engagement` / "User Engaged" — fires AT MOST ONCE per page when the
  *     visitor first interacts (mousemove / keydown / touchstart / scroll).
@@ -79,7 +79,7 @@ export class EngagementPlugin extends BasePlugin {
 
         // SPA navigation — flush the leaving route's metrics, then reset
         this.navigationHandler = () => this.handleSpaNavigation();
-        window.addEventListener('clianta:navigation', this.navigationHandler);
+        window.addEventListener('eutexa:navigation', this.navigationHandler);
 
         this.popstateHandler = () => this.handleSpaNavigation();
         window.addEventListener('popstate', this.popstateHandler);
@@ -97,7 +97,7 @@ export class EngagementPlugin extends BasePlugin {
                 window.removeEventListener('pagehide', this.boundUnloadHandler);
             }
             if (this.navigationHandler) {
-                window.removeEventListener('clianta:navigation', this.navigationHandler);
+                window.removeEventListener('eutexa:navigation', this.navigationHandler);
                 this.navigationHandler = null;
             }
             if (this.popstateHandler) {

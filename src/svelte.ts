@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Svelte Integration
+ * Eutexa SDK - Svelte Integration
  *
  * Provides helpers for Svelte 4+ and Svelte 5 (SvelteKit) integration.
  * Uses a store-based pattern that works with Svelte's reactivity system.
@@ -7,36 +7,36 @@
  * @example
  * // In +layout.svelte or root component:
  * <script>
- *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { initEutexa } from '@eutexa/sdk/svelte';
  *   import { setContext } from 'svelte';
  *
- *   const cliantaStore = initClianta({
+ *   const eutexaStore = initEutexa({
  *     projectId: 'your-project-id',
  *   });
  *
- *   setContext('clianta', cliantaStore);
+ *   setContext('eutexa', eutexaStore);
  * </script>
  *
  * // In child components:
  * <script>
  *   import { getContext } from 'svelte';
- *   const clianta = getContext('clianta');
+ *   const eutexa = getContext('eutexa');
  *
  *   function handleClick() {
- *     clianta.track('button_click', 'CTA', { page: 'home' });
+ *     eutexa.track('button_click', 'CTA', { page: 'home' });
  *   }
  * </script>
  */
 
-import { clianta } from './index';
-import type { CliantaConfig, TrackerCore, UserTraits, ConsentState } from './types';
+import { eutexa } from './index';
+import type { EutexaConfig, TrackerCore, UserTraits, ConsentState } from './types';
 
-export interface CliantaSvelteConfig extends CliantaConfig {
+export interface EutexaSvelteConfig extends EutexaConfig {
     /** Project/workspace ID (required) */
     projectId: string;
 }
 
-export interface CliantaStore {
+export interface EutexaStore {
     /** The underlying tracker instance */
     readonly tracker: TrackerCore | null;
 
@@ -69,30 +69,30 @@ export interface CliantaStore {
 }
 
 /**
- * Initialize Clianta tracker and return a store-like object.
+ * Initialize Eutexa tracker and return a store-like object.
  *
  * Use with Svelte's context API:
  * ```svelte
  * <script>
- *   import { initClianta } from '@clianta/sdk/svelte';
+ *   import { initEutexa } from '@eutexa/sdk/svelte';
  *   import { setContext } from 'svelte';
  *
- *   const clianta = initClianta({ projectId: 'xxx' });
- *   setContext('clianta', clianta);
+ *   const eutexa = initEutexa({ projectId: 'xxx' });
+ *   setContext('eutexa', eutexa);
  * </script>
  * ```
  *
  * @param config - Configuration including projectId
- * @returns CliantaStore with tracker methods
+ * @returns EutexaStore with tracker methods
  */
-export function initClianta(config: CliantaSvelteConfig): CliantaStore {
+export function initEutexa(config: EutexaSvelteConfig): EutexaStore {
     if (!config.projectId) {
-        console.error('[Clianta] Missing projectId in Svelte config');
+        console.error('[Eutexa] Missing projectId in Svelte config');
         return createNullStore();
     }
 
     const { projectId, ...options } = config;
-    const tracker = clianta(projectId, options);
+    const tracker = eutexa(projectId, options);
 
     return {
         get tracker() { return tracker; },
@@ -138,7 +138,7 @@ export function initClianta(config: CliantaSvelteConfig): CliantaStore {
 /**
  * Create a null store for when initialization fails
  */
-function createNullStore(): CliantaStore {
+function createNullStore(): EutexaStore {
     return {
         get tracker() { return null; },
         track() { },
@@ -167,7 +167,7 @@ function createNullStore(): CliantaStore {
 export function trackClick(
     node: HTMLElement,
     params: {
-        store: CliantaStore;
+        store: EutexaStore;
         eventName: string;
         properties?: Record<string, unknown>;
     }
@@ -189,4 +189,4 @@ export function trackClick(
 }
 
 // Re-export types for convenience
-export type { CliantaConfig, TrackerCore };
+export type { EutexaConfig, TrackerCore };

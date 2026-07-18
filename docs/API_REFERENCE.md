@@ -1,11 +1,11 @@
-# Clianta SDK — API Reference
+# Eutexa SDK — API Reference
 
 ## Initialization
 
 ```typescript
-import { clianta } from '@clianta/sdk';
+import { eutexa } from '@eutexa/sdk';
 
-const tracker = clianta('your-project-id', {
+const tracker = eutexa('your-project-id', {
   debug: true, // optional
 });
 ```
@@ -14,16 +14,16 @@ Or with framework adapters (recommended):
 
 ```tsx
 // React/Next.js
-<CliantaProvider projectId="your-project-id">
+<EutexaProvider projectId="your-project-id">
 
 // Vue
-app.use(CliantaPlugin, { projectId: 'your-project-id' });
+app.use(EutexaPlugin, { projectId: 'your-project-id' });
 
 // Angular
-createCliantaTracker({ projectId: '...', apiEndpoint: '...' });
+createEutexaTracker({ projectId: '...', apiEndpoint: '...' });
 
 // Svelte
-initClianta({ projectId: '...', apiEndpoint: '...' });
+initEutexa({ projectId: '...', apiEndpoint: '...' });
 ```
 
 ---
@@ -222,28 +222,28 @@ tracker.use((event, next) => {
 ## React Hooks
 
 ```typescript
-import { useClianta, useCliantaReady, useCliantaTrack } from '@clianta/sdk/react';
+import { useEutexa, useEutexaReady, useEutexaTrack } from '@eutexa/sdk/react';
 
 // Get tracker instance
-const tracker = useClianta();
+const tracker = useEutexa();
 
 // Check if SDK is ready
-const { isReady, tracker } = useCliantaReady();
+const { isReady, tracker } = useEutexaReady();
 
 // Quick track function
-const track = useCliantaTrack();
+const track = useEutexaTrack();
 track('button_click', 'CTA', { page: 'pricing' });
 ```
 
 ## Vue Composables
 
 ```typescript
-import { useClianta, useCliantaTrack, useCliantaIdentify, useCliantaConsent } from '@clianta/sdk/vue';
+import { useEutexa, useEutexaTrack, useEutexaIdentify, useEutexaConsent } from '@eutexa/sdk/vue';
 
-const tracker = useClianta();         // Ref<TrackerCore | null>
-const track = useCliantaTrack();      // (type, name, props?) => void
-const identify = useCliantaIdentify(); // (email, traits?) => Promise
-const { consent } = useCliantaConsent();
+const tracker = useEutexa();         // Ref<TrackerCore | null>
+const track = useEutexaTrack();      // (type, name, props?) => void
+const identify = useEutexaIdentify(); // (email, traits?) => Promise
+const { consent } = useEutexaConsent();
 ```
 
 ---
@@ -251,7 +251,7 @@ const { consent } = useCliantaConsent();
 ## Configuration
 
 ```typescript
-interface CliantaConfig {
+interface EutexaConfig {
   apiEndpoint?: string;       // Auto-detected from env vars
   debug?: boolean;            // Default: false
   plugins?: PluginName[];     // Default: all enabled
@@ -273,7 +273,7 @@ interface CliantaConfig {
 
 ```typescript
 import type {
-  CliantaConfig,
+  EutexaConfig,
   TrackerCore,
   TrackingEvent,
   EventType,
@@ -283,5 +283,5 @@ import type {
   PluginName,
   GroupTraits,
   MiddlewareFn,
-} from '@clianta/sdk';
+} from '@eutexa/sdk';
 ```

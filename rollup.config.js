@@ -10,8 +10,8 @@ const production = !process.env.ROLLUP_WATCH;
 
 // Banner with version info
 const banner = `/*!
- * Clianta SDK v${packageJson.version}
- * (c) ${new Date().getFullYear()} Clianta
+ * Eutexa SDK v${packageJson.version}
+ * (c) ${new Date().getFullYear()} Eutexa
  * Released under the MIT License.
  */`;
 
@@ -22,9 +22,9 @@ export default [
         output: [
             // UMD build for <script> tag (minified)
             {
-                file: 'dist/clianta.umd.min.js',
+                file: 'dist/eutexa.umd.min.js',
                 format: 'umd',
-                name: 'Clianta',
+                name: 'Eutexa',
                 banner,
                 sourcemap: true,
                 plugins: production ? [terser({
@@ -35,22 +35,22 @@ export default [
             },
             // UMD build for <script> tag (unminified for debugging)
             {
-                file: 'dist/clianta.umd.js',
+                file: 'dist/eutexa.umd.js',
                 format: 'umd',
-                name: 'Clianta',
+                name: 'Eutexa',
                 banner,
                 sourcemap: true,
             },
             // ESM build for modern bundlers
             {
-                file: 'dist/clianta.esm.js',
+                file: 'dist/eutexa.esm.js',
                 format: 'esm',
                 banner,
                 sourcemap: true,
             },
             // CJS build for Node.js / older bundlers
             {
-                file: 'dist/clianta.cjs.js',
+                file: 'dist/eutexa.cjs.js',
                 format: 'cjs',
                 banner,
                 sourcemap: true,

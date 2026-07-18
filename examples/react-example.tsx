@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { clianta, CRMClient, type TrackerCore, type Contact } from '@clianta/sdk';
+import { eutexa, CRMClient, type TrackerCore, type Contact } from '@eutexa/sdk';
 
 /**
- * React Hook for Clianta Tracker
+ * React Hook for Eutexa Tracker
  */
-export function useClianta(workspaceId: string, config?: any): TrackerCore | null {
+export function useEutexa(workspaceId: string, config?: any): TrackerCore | null {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
 
     useEffect(() => {
-        const instance = clianta(workspaceId, {
+        const instance = eutexa(workspaceId, {
             debug: process.env.NODE_ENV === 'development',
             ...config,
         });
@@ -25,10 +25,10 @@ export function useClianta(workspaceId: string, config?: any): TrackerCore | nul
 }
 
 /**
- * Example React Component using Clianta SDK
+ * Example React Component using Eutexa SDK
  */
 export default function App() {
-    const tracker = useClianta('your-workspace-id');
+    const tracker = useEutexa('your-workspace-id');
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -54,7 +54,7 @@ export default function App() {
         setLoading(true);
         try {
             const crm = new CRMClient(
-                'https://api.clianta.online',
+                'https://api.eutexa.com',
                 'your-workspace-id',
                 'your-auth-token' // Get from your auth system
             );
@@ -73,7 +73,7 @@ export default function App() {
 
     return (
         <div className="app">
-            <h1>Clianta SDK - React Example</h1>
+            <h1>Eutexa SDK - React Example</h1>
 
             <section>
                 <h2>Tracking</h2>

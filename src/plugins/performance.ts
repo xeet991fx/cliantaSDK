@@ -1,11 +1,11 @@
 /**
- * Clianta SDK - Performance Plugin
+ * Eutexa SDK - Performance Plugin
  *
  * Tracks page performance and Web Vitals (LCP, FID, CLS, TTFB).
  *
  * SPA-aware:
  *   - Initial measurement comes from the Navigation Timing API on `window.load`.
- *   - On every `clianta:navigation` (dispatched by PageViewPlugin's history wrapper)
+ *   - On every `eutexa:navigation` (dispatched by PageViewPlugin's history wrapper)
  *     the plugin re-arms its observers and emits a synthetic `Page Performance`
  *     event for the new route — so SPA routes are no longer invisible to perf
  *     dashboards.
@@ -84,7 +84,7 @@ export class PerformancePlugin extends BasePlugin {
 
         // SPA navigation — flush vitals for the leaving route, then reset
         this.navigationHandler = () => this.handleSpaNavigation();
-        window.addEventListener('clianta:navigation', this.navigationHandler);
+        window.addEventListener('eutexa:navigation', this.navigationHandler);
 
         this.popstateHandler = () => this.handleSpaNavigation();
         window.addEventListener('popstate', this.popstateHandler);
@@ -94,7 +94,7 @@ export class PerformancePlugin extends BasePlugin {
         if (typeof window !== 'undefined') {
             if (this.boundLoadHandler) window.removeEventListener('load', this.boundLoadHandler);
             if (this.boundPageHide) window.removeEventListener('pagehide', this.boundPageHide);
-            if (this.navigationHandler) window.removeEventListener('clianta:navigation', this.navigationHandler);
+            if (this.navigationHandler) window.removeEventListener('eutexa:navigation', this.navigationHandler);
             if (this.popstateHandler) window.removeEventListener('popstate', this.popstateHandler);
         }
         if (typeof document !== 'undefined' && this.boundVisibilityHandler) {

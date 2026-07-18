@@ -75,8 +75,8 @@ describe('ScrollPlugin', () => {
             // ScrollPlugin should NOT patch history.pushState directly
             expect(history.pushState).toBe(originalPushState);
             expect(history.replaceState).toBe(originalReplaceState);
-            // Instead it listens for the clianta:navigation custom event
-            expect(window.addEventListener).toHaveBeenCalledWith('clianta:navigation', expect.any(Function));
+            // Instead it listens for the eutexa:navigation custom event
+            expect(window.addEventListener).toHaveBeenCalledWith('eutexa:navigation', expect.any(Function));
         });
 
         it('should register popstate handler', () => {
@@ -161,7 +161,7 @@ describe('ScrollPlugin', () => {
             vi.clearAllMocks();
         });
 
-        it('should reset on clianta:navigation event', () => {
+        it('should reset on eutexa:navigation event', () => {
             // First track a milestone
             (window as any).pageYOffset = 600; // 50%
             const scrollHandler = (window.addEventListener as ReturnType<typeof vi.fn>).mock.calls
@@ -173,7 +173,7 @@ describe('ScrollPlugin', () => {
             }
 
             // Dispatch navigation event (as PageViewPlugin would)
-            window.dispatchEvent(new Event('clianta:navigation'));
+            window.dispatchEvent(new Event('eutexa:navigation'));
 
             // Reset should allow tracking same milestones again
             // (Internal state is reset)
@@ -220,7 +220,7 @@ describe('ScrollPlugin', () => {
             expect(history.pushState).toBe(originalPushState);
             expect(history.replaceState).toBe(originalReplaceState);
             // Custom event listener should be removed
-            expect(window.removeEventListener).toHaveBeenCalledWith('clianta:navigation', expect.any(Function));
+            expect(window.removeEventListener).toHaveBeenCalledWith('eutexa:navigation', expect.any(Function));
         });
 
         it('should remove popstate listener', () => {

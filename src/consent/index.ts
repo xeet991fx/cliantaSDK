@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Consent Module
+ * Eutexa SDK - Consent Module
  * @see SDK_VERSION in core/config.ts
  */
 

@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Form Tracking Plugin
+ * Eutexa SDK - Form Tracking Plugin
  * @see SDK_VERSION in core/config.ts
  */
 

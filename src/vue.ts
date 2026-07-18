@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Vue 3 Integration
+ * Eutexa SDK - Vue 3 Integration
  *
  * Provides plugin and composables for easy Vue 3 integration.
  */
@@ -15,47 +15,47 @@ import {
     type App,
     type Ref,
 } from 'vue';
-import { clianta } from './index';
-import type { CliantaConfig, TrackerCore } from './types';
+import { eutexa } from './index';
+import type { EutexaConfig, TrackerCore } from './types';
 
 // Injection key for tracker
-const CliantaKey: InjectionKey<Ref<TrackerCore | null>> = Symbol('clianta');
+const EutexaKey: InjectionKey<Ref<TrackerCore | null>> = Symbol('eutexa');
 
-export interface CliantaPluginOptions extends CliantaConfig {
+export interface EutexaPluginOptions extends EutexaConfig {
     /** Project ID (required) */
     projectId: string;
 }
 
 /**
- * Vue plugin for Clianta SDK
+ * Vue plugin for Eutexa SDK
  *
  * @example
  * // In main.ts:
  * import { createApp } from 'vue';
- * import { CliantaPlugin } from '@clianta/sdk/vue';
+ * import { EutexaPlugin } from '@eutexa/sdk/vue';
  * import App from './App.vue';
  *
  * const app = createApp(App);
- * app.use(CliantaPlugin, {
+ * app.use(EutexaPlugin, {
  *   projectId: 'your-project-id',
  * });
  * app.mount('#app');
  */
-export const CliantaPlugin: Plugin<CliantaPluginOptions> = {
-    install(app: App, options: CliantaPluginOptions) {
+export const EutexaPlugin: Plugin<EutexaPluginOptions> = {
+    install(app: App, options: EutexaPluginOptions) {
         if (!options?.projectId) {
-            console.error('[Clianta] Missing projectId in plugin options');
+            console.error('[Eutexa] Missing projectId in plugin options');
             return;
         }
 
         const { projectId, ...config } = options;
-        const tracker = clianta(projectId, config);
+        const tracker = eutexa(projectId, config);
 
         // Provide tracker to all components
-        app.provide(CliantaKey, ref(tracker));
+        app.provide(EutexaKey, ref(tracker));
 
         // Add global property for Options API access
-        app.config.globalProperties.$clianta = tracker;
+        app.config.globalProperties.$eutexa = tracker;
 
         // Flush on app unmount
         app.mixin({
@@ -70,38 +70,38 @@ export const CliantaPlugin: Plugin<CliantaPluginOptions> = {
 };
 
 /**
- * useClianta - Composable to access tracker
+ * useEutexa - Composable to access tracker
  *
  * @example
  * <script setup>
- * import { useClianta } from '@clianta/sdk/vue';
+ * import { useEutexa } from '@eutexa/sdk/vue';
  *
- * const tracker = useClianta();
+ * const tracker = useEutexa();
  * tracker.value?.track('button_click', 'CTA Button');
  * </script>
  */
-export function useClianta(): Ref<TrackerCore | null> {
-    const tracker = inject(CliantaKey);
+export function useEutexa(): Ref<TrackerCore | null> {
+    const tracker = inject(EutexaKey);
     if (!tracker) {
-        console.warn('[Clianta] useClianta must be used within a component where CliantaPlugin is installed');
+        console.warn('[Eutexa] useEutexa must be used within a component where EutexaPlugin is installed');
         return ref(null) as Ref<TrackerCore | null>;
     }
     return tracker;
 }
 
 /**
- * useCliantaTrack - Composable for tracking events
+ * useEutexaTrack - Composable for tracking events
  *
  * @example
  * <script setup>
- * import { useCliantaTrack } from '@clianta/sdk/vue';
+ * import { useEutexaTrack } from '@eutexa/sdk/vue';
  *
- * const track = useCliantaTrack();
+ * const track = useEutexaTrack();
  * track('purchase', 'Order Completed', { orderId: '123' });
  * </script>
  */
-export function useCliantaTrack() {
-    const tracker = useClianta();
+export function useEutexaTrack() {
+    const tracker = useEutexa();
     return (
         eventType: string,
         eventName: string,
@@ -112,60 +112,60 @@ export function useCliantaTrack() {
 }
 
 /**
- * useCliantaIdentify - Composable for identifying users
+ * useEutexaIdentify - Composable for identifying users
  *
  * @example
  * <script setup>
- * import { useCliantaIdentify } from '@clianta/sdk/vue';
+ * import { useEutexaIdentify } from '@eutexa/sdk/vue';
  *
- * const identify = useCliantaIdentify();
+ * const identify = useEutexaIdentify();
  * identify('user@example.com', { name: 'John' });
  * </script>
  */
-export function useCliantaIdentify() {
-    const tracker = useClianta();
+export function useEutexaIdentify() {
+    const tracker = useEutexa();
     return (email: string, traits?: Record<string, unknown>) => {
         return tracker.value?.identify(email, traits);
     };
 }
 
 /**
- * useCliantaPageView - Composable for manual page view tracking
+ * useEutexaPageView - Composable for manual page view tracking
  *
  * @example
  * <script setup>
- * import { useCliantaPageView } from '@clianta/sdk/vue';
+ * import { useEutexaPageView } from '@eutexa/sdk/vue';
  * import { watch } from 'vue';
  * import { useRoute } from 'vue-router';
  *
  * const route = useRoute();
- * const trackPageView = useCliantaPageView();
+ * const trackPageView = useEutexaPageView();
  *
  * watch(() => route.path, () => {
  *   trackPageView(route.name?.toString());
  * });
  * </script>
  */
-export function useCliantaPageView() {
-    const tracker = useClianta();
+export function useEutexaPageView() {
+    const tracker = useEutexa();
     return (name?: string, properties?: Record<string, unknown>) => {
         tracker.value?.page(name, properties);
     };
 }
 
 /**
- * useCliantaConsent - Composable for managing consent
+ * useEutexaConsent - Composable for managing consent
  *
  * @example
  * <script setup>
- * import { useCliantaConsent } from '@clianta/sdk/vue';
+ * import { useEutexaConsent } from '@eutexa/sdk/vue';
  *
- * const { consent, getConsentState } = useCliantaConsent();
+ * const { consent, getConsentState } = useEutexaConsent();
  * consent({ analytics: true, marketing: false });
  * </script>
  */
-export function useCliantaConsent() {
-    const tracker = useClianta();
+export function useEutexaConsent() {
+    const tracker = useEutexa();
     return {
         consent: (state: { analytics?: boolean; marketing?: boolean; personalization?: boolean }) => {
             tracker.value?.consent(state);
@@ -175,11 +175,11 @@ export function useCliantaConsent() {
 }
 
 // Re-export types for convenience
-export type { CliantaConfig, TrackerCore };
+export type { EutexaConfig, TrackerCore };
 
 // Augment Vue types for Options API
 declare module 'vue' {
     interface ComponentCustomProperties {
-        $clianta: TrackerCore;
+        $eutexa: TrackerCore;
     }
 }

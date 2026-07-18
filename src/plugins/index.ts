@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Plugins Index
+ * Eutexa SDK - Plugins Index
  * Version is defined in core/config.ts as SDK_VERSION
  */
 

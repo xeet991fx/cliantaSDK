@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Page View Plugin
+ * Eutexa SDK - Page View Plugin
  * @see SDK_VERSION in core/config.ts
  */
 
@@ -7,7 +7,7 @@ import type { PluginName, TrackerCore } from '../types';
 import { BasePlugin } from './base';
 
 /** Sentinel flag to prevent double-wrapping history methods across multiple SDK instances */
-const WRAPPED_FLAG = '__clianta_pv_wrapped__';
+const WRAPPED_FLAG = '__eutexa_pv_wrapped__';
 
 /**
  * Page View Plugin - Tracks page views
@@ -39,13 +39,13 @@ export class PageViewPlugin extends BasePlugin {
             history.pushState = function (...args) {
                 originalPush.apply(history, args);
                 // Dispatch event so all listening instances track the navigation
-                window.dispatchEvent(new Event('clianta:navigation'));
+                window.dispatchEvent(new Event('eutexa:navigation'));
             };
             (history.pushState as any)[WRAPPED_FLAG] = true;
 
             history.replaceState = function (...args) {
                 originalReplace.apply(history, args);
-                window.dispatchEvent(new Event('clianta:navigation'));
+                window.dispatchEvent(new Event('eutexa:navigation'));
             };
             (history.replaceState as any)[WRAPPED_FLAG] = true;
         }
@@ -53,7 +53,7 @@ export class PageViewPlugin extends BasePlugin {
         // Each instance listens to the shared navigation event rather than embedding
         // tracking directly in the pushState wrapper — decouples tracking from wrapping.
         this.navHandler = () => this.trackPageView();
-        window.addEventListener('clianta:navigation', this.navHandler);
+        window.addEventListener('eutexa:navigation', this.navHandler);
 
         // Handle back/forward navigation
         this.popstateHandler = () => this.trackPageView();
@@ -63,7 +63,7 @@ export class PageViewPlugin extends BasePlugin {
     destroy(): void {
         if (typeof window !== 'undefined') {
             if (this.navHandler) {
-                window.removeEventListener('clianta:navigation', this.navHandler);
+                window.removeEventListener('eutexa:navigation', this.navHandler);
                 this.navHandler = null;
             }
             if (this.popstateHandler) {

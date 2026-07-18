@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Next.js Integration Guide
+ * Eutexa SDK - Next.js Integration Guide
  * Complete examples for App Router and Pages Router
  */
 
@@ -7,30 +7,30 @@
 // OPTION 1: App Router Provider (Recommended)
 // ============================================
 
-// components/CliantaProvider.tsx
+// components/EutexaProvider.tsx
 // Note: Add 'use client' directive at the top of each component file when using these examples
 // 'use client';
 
 import { useEffect, createContext, useContext, useState } from 'react';
-import { clianta, type TrackerCore, type ConsentState } from '@clianta/sdk';
+import { eutexa, type TrackerCore, type ConsentState } from '@eutexa/sdk';
 
-interface CliantaContextType {
+interface EutexaContextType {
     tracker: TrackerCore | null;
     consent: (state: ConsentState) => void;
     deleteData: () => void;
 }
 
-const CliantaContext = createContext<CliantaContextType>({
+const EutexaContext = createContext<EutexaContextType>({
     tracker: null,
     consent: () => { },
     deleteData: () => { },
 });
 
-export function useClianta() {
-    return useContext(CliantaContext);
+export function useEutexa() {
+    return useContext(EutexaContext);
 }
 
-interface CliantaProviderProps {
+interface EutexaProviderProps {
     children: React.ReactNode;
     workspaceId: string;
     apiEndpoint?: string;
@@ -39,18 +39,18 @@ interface CliantaProviderProps {
     cookielessMode?: boolean;
 }
 
-export function CliantaProvider({
+export function EutexaProvider({
     children,
     workspaceId,
-    apiEndpoint = 'https://api.clianta.online',
+    apiEndpoint = 'https://api.eutexa.com',
     waitForConsent = false,
     anonymousMode = false,
     cookielessMode = false,
-}: CliantaProviderProps) {
+}: EutexaProviderProps) {
     const [tracker, setTracker] = useState<TrackerCore | null>(null);
 
     useEffect(() => {
-        const instance = clianta(workspaceId, {
+        const instance = eutexa(workspaceId, {
             apiEndpoint,
             debug: process.env.NODE_ENV === 'development',
             autoPageView: true,
@@ -77,9 +77,9 @@ export function CliantaProvider({
     };
 
     return (
-        <CliantaContext.Provider value={{ tracker, consent, deleteData }}>
+        <EutexaContext.Provider value={{ tracker, consent, deleteData }}>
             {children}
-        </CliantaContext.Provider>
+        </EutexaContext.Provider>
     );
 }
 
@@ -88,20 +88,20 @@ export function CliantaProvider({
 // ============================================
 
 /*
-import { CliantaProvider } from '@/components/CliantaProvider';
+import { EutexaProvider } from '@/components/EutexaProvider';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en">
             <body>
-                <CliantaProvider 
+                <EutexaProvider 
                     workspaceId={process.env.NEXT_PUBLIC_WORKSPACE_ID!}
                     apiEndpoint={process.env.NEXT_PUBLIC_API_ENDPOINT}
                     waitForConsent={true}  // GDPR: buffer until consent
                     anonymousMode={true}   // GDPR: anonymous until consent
                 >
                     {children}
-                </CliantaProvider>
+                </EutexaProvider>
             </body>
         </html>
     );
@@ -115,10 +115,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 // 'use client';
 // Note: Import from React at top of file. This is an example component.
 // import { useState, useEffect } from 'react';
-// import { useClianta } from '@/components/CliantaProvider';
+// import { useEutexa } from '@/components/EutexaProvider';
 
 export function CookieConsentBanner() {
-    const { consent, deleteData } = useClianta();
+    const { consent, deleteData } = useEutexa();
     const [showBanner, setShowBanner] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -195,10 +195,10 @@ export function CookieConsentBanner() {
 
 // 'use client';
 
-// import { useClianta } from '@/components/CliantaProvider';
+// import { useEutexa } from '@/components/EutexaProvider';
 
 export function SignupButton() {
-    const { tracker } = useClianta();
+    const { tracker } = useEutexa();
 
     const handleClick = () => {
         tracker?.track('button_click', 'Signup CTA', {
@@ -225,16 +225,16 @@ export function SignupButton() {
 
 // 'use client';
 
-// import { useClianta } from '@/components/CliantaProvider';
+// import { useEutexa } from '@/components/EutexaProvider';
 
 export function LoginForm() {
-    const { tracker } = useClianta();
+    const { tracker } = useEutexa();
 
     const handleLogin = async (email: string, password: string) => {
         // Your login logic...
         const user = await authenticateUser(email, password);
 
-        // Identify the user in Clianta
+        // Identify the user in Eutexa
         tracker?.identify(email, {
             firstName: user.firstName,
             lastName: user.lastName,
@@ -269,12 +269,12 @@ async function authenticateUser(email: string, password: string) {
 /*
 // pages/_app.tsx
 import { useEffect } from 'react';
-import { clianta } from '@clianta/sdk';
+import { eutexa } from '@eutexa/sdk';
 import type { AppProps } from 'next/app';
 
 export default function App({ Component, pageProps }: AppProps) {
     useEffect(() => {
-        const tracker = clianta(process.env.NEXT_PUBLIC_WORKSPACE_ID!, {
+        const tracker = eutexa(process.env.NEXT_PUBLIC_WORKSPACE_ID!, {
             apiEndpoint: process.env.NEXT_PUBLIC_API_ENDPOINT,
             consent: {
                 waitForConsent: true,
@@ -295,5 +295,5 @@ export default function App({ Component, pageProps }: AppProps) {
 
 /*
 NEXT_PUBLIC_WORKSPACE_ID=your-workspace-id
-NEXT_PUBLIC_API_ENDPOINT=https://api.clianta.online
+NEXT_PUBLIC_API_ENDPOINT=https://api.eutexa.com
 */

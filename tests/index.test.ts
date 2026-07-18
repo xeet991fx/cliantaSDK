@@ -52,7 +52,7 @@ vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
 
 // Don't stub window, document, or history - jsdom provides real implementations
 
-import { clianta, Tracker, ConsentManager, SDK_VERSION } from '../src/index';
+import { eutexa, Tracker, ConsentManager, SDK_VERSION } from '../src/index';
 
 describe('SDK Entry Point', () => {
     beforeEach(() => {
@@ -61,24 +61,24 @@ describe('SDK Entry Point', () => {
         sessionStorageMock.clear();
     });
 
-    describe('clianta()', () => {
+    describe('eutexa()', () => {
         it('should create tracker instance', () => {
-            const tracker = clianta('workspace-1');
+            const tracker = eutexa('workspace-1');
             expect(tracker).toBeDefined();
             expect(tracker.getWorkspaceId()).toBe('workspace-1');
         });
 
         it('should return same instance for same workspace', () => {
-            const tracker1 = clianta('workspace-1');
-            const tracker2 = clianta('workspace-1');
+            const tracker1 = eutexa('workspace-1');
+            const tracker2 = eutexa('workspace-1');
             expect(tracker1).toBe(tracker2);
         });
 
         it('should create new instance for different workspace', async () => {
-            const tracker1 = clianta('workspace-1');
+            const tracker1 = eutexa('workspace-1');
             const id1 = tracker1.getWorkspaceId();
 
-            const tracker2 = clianta('workspace-2');
+            const tracker2 = eutexa('workspace-2');
             const id2 = tracker2.getWorkspaceId();
 
             expect(id2).toBe('workspace-2');
@@ -86,7 +86,7 @@ describe('SDK Entry Point', () => {
         });
 
         it('should accept configuration options', () => {
-            const tracker = clianta('workspace-1', {
+            const tracker = eutexa('workspace-1', {
                 debug: true,
                 batchSize: 20,
             });
@@ -117,14 +117,14 @@ describe('SDK Entry Point', () => {
     });
 
     describe('Window attachment', () => {
-        it('should attach clianta to window', () => {
-            expect((window as any).clianta).toBeDefined();
+        it('should attach eutexa to window', () => {
+            expect((window as any).eutexa).toBeDefined();
         });
 
-        it('should attach Clianta namespace to window', () => {
-            expect((window as any).Clianta).toBeDefined();
-            expect((window as any).Clianta.clianta).toBe(clianta);
-            expect((window as any).Clianta.Tracker).toBe(Tracker);
+        it('should attach Eutexa namespace to window', () => {
+            expect((window as any).Eutexa).toBeDefined();
+            expect((window as any).Eutexa.eutexa).toBe(eutexa);
+            expect((window as any).Eutexa.Tracker).toBe(Tracker);
         });
     });
 });

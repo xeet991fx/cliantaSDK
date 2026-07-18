@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Consent Storage
+ * Eutexa SDK - Consent Storage
  * Handles persistence of consent state
  * @see SDK_VERSION in core/config.ts
  */

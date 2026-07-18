@@ -1,5 +1,5 @@
 /**
- * Clianta Tracking SDK - Popup Forms Plugin
+ * Eutexa Tracking SDK - Popup Forms Plugin
  * @see SDK_VERSION in core/config.ts
  * 
  * Auto-loads and displays lead capture popups based on triggers
@@ -91,7 +91,7 @@ export class PopupFormsPlugin extends BasePlugin {
     }
 
     private loadShownForms(): void {
-        const stored = getLocalStorage('clianta_shown_forms');
+        const stored = getLocalStorage('eutexa_shown_forms');
         if (stored) {
             try {
                 const data = JSON.parse(stored);
@@ -103,7 +103,7 @@ export class PopupFormsPlugin extends BasePlugin {
     }
 
     private saveShownForms(): void {
-        setLocalStorage('clianta_shown_forms', JSON.stringify({
+        setLocalStorage('eutexa_shown_forms', JSON.stringify({
             forms: Array.from(this.shownForms),
             timestamp: Date.now(),
         }));
@@ -140,7 +140,7 @@ export class PopupFormsPlugin extends BasePlugin {
         if (form.showFrequency === 'once_per_visitor') {
             if (this.shownForms.has(form._id)) return false;
         } else if (form.showFrequency === 'once_per_session') {
-            const sessionKey = `clianta_form_${form._id}_shown`;
+            const sessionKey = `eutexa_form_${form._id}_shown`;
             if (getSessionStorage(sessionKey)) return false;
         }
         return true;
@@ -221,7 +221,7 @@ export class PopupFormsPlugin extends BasePlugin {
         // Mark as shown
         this.shownForms.add(form._id);
         this.saveShownForms();
-        setSessionStorage(`clianta_form_${form._id}_shown`, 'true');
+        setSessionStorage(`eutexa_form_${form._id}_shown`, 'true');
 
         // Track view
         await this.trackFormView(form._id);
@@ -249,7 +249,7 @@ export class PopupFormsPlugin extends BasePlugin {
     private renderForm(form: LeadForm): void {
         // Create overlay
         const overlay = document.createElement('div');
-        overlay.id = `clianta-form-overlay-${form._id}`;
+        overlay.id = `eutexa-form-overlay-${form._id}`;
         overlay.style.cssText = `
             position: fixed;
             top: 0;
@@ -267,7 +267,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
         // Create form container
         const container = document.createElement('div');
-        container.id = `clianta-form-${form._id}`;
+        container.id = `eutexa-form-${form._id}`;
 
         const style = form.style || {};
         container.style.cssText = `
@@ -318,7 +318,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
         // Close button
         const closeBtn = document.createElement('button');
-        closeBtn.id = 'clianta-form-close';
+        closeBtn.id = 'eutexa-form-close';
         closeBtn.style.cssText = `
             position: absolute;
             top: 12px;
@@ -347,7 +347,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
         // Form element
         const formElement = document.createElement('form');
-        formElement.id = 'clianta-form-element';
+        formElement.id = 'eutexa-form-element';
 
         // Build fields
         form.fields.forEach(field => {
@@ -470,7 +470,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
     private setupFormEvents(form: LeadForm, overlay: HTMLElement, container: HTMLElement): void {
         // Close button
-        const closeBtn = container.querySelector('#clianta-form-close');
+        const closeBtn = container.querySelector('#eutexa-form-close');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => this.closeForm(form._id, overlay, container));
         }
@@ -483,7 +483,7 @@ export class PopupFormsPlugin extends BasePlugin {
         });
 
         // Form submit
-        const formElement = container.querySelector('#clianta-form-element') as HTMLFormElement;
+        const formElement = container.querySelector('#eutexa-form-element') as HTMLFormElement;
         if (formElement) {
             formElement.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -592,7 +592,7 @@ export class PopupFormsPlugin extends BasePlugin {
 
                 // Close after delay
                 setTimeout(() => {
-                    const overlay = document.getElementById(`clianta-form-overlay-${form._id}`);
+                    const overlay = document.getElementById(`eutexa-form-overlay-${form._id}`);
                     if (overlay) {
                         this.closeForm(form._id, overlay, container);
                     }

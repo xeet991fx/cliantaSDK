@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully implemented a comprehensive event-driven automation system for the Clianta SDK, enabling automated email notifications, task creation, webhooks, and contact updates based on CRM events.
+Successfully implemented a comprehensive event-driven automation system for the Eutexa SDK, enabling automated email notifications, task creation, webhooks, and contact updates based on CRM events.
 
 ## What Was Built
 

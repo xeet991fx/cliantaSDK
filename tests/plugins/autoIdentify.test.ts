@@ -118,8 +118,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
         // Clean window globals
         delete (window as any).Clerk;
         delete (window as any).firebase;
-        delete (window as any).__clianta_user;
-        delete (window as any).__clianta_group;
+        delete (window as any).__eutexa_user;
+        delete (window as any).__eutexa_group;
         delete (window as any).__SUPABASE_CLIENT__;
         delete (window as any).supabase;
         delete (window as any).__auth0Client;
@@ -151,9 +151,9 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     // ─── Core Detection ───
 
-    describe('window.__clianta_user hook', () => {
-        it('should identify user from __clianta_user', () => {
-            (window as any).__clianta_user = {
+    describe('window.__eutexa_user hook', () => {
+        it('should identify user from __eutexa_user', () => {
+            (window as any).__eutexa_user = {
                 email: 'test@example.com',
                 firstName: 'John',
                 lastName: 'Doe',
@@ -168,8 +168,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
             });
         });
 
-        it('should ignore __clianta_user without valid email', () => {
-            (window as any).__clianta_user = { email: 'not-an-email' };
+        it('should ignore __eutexa_user without valid email', () => {
+            (window as any).__eutexa_user = { email: 'not-an-email' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -416,8 +416,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     describe('Safeguard #4 — Sticky identification', () => {
         it('should re-identify on init if a sticky email is cached', () => {
-            localStorageMock.store['clianta_idm'] = 'sticky@example.com';
-            localStorageMock.store['clianta_idm_src'] = 'localStorage:auth_token';
+            localStorageMock.store['eutexa_idm'] = 'sticky@example.com';
+            localStorageMock.store['eutexa_idm_src'] = 'localStorage:auth_token';
 
             plugin.init(tracker);
 
@@ -433,8 +433,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
             vi.advanceTimersByTime(2500);
 
             expect(tracker.identify).toHaveBeenCalledWith('persisted@example.com', expect.any(Object));
-            expect(localStorageMock.store['clianta_idm']).toBe('persisted@example.com');
-            expect(localStorageMock.store['clianta_idm_src']).toContain('token');
+            expect(localStorageMock.store['eutexa_idm']).toBe('persisted@example.com');
+            expect(localStorageMock.store['eutexa_idm_src']).toContain('token');
         });
     });
 
@@ -456,8 +456,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
             window.dispatchEvent(event);
 
             expect(tracker.reset).toHaveBeenCalled();
-            expect(localStorageMock.store['clianta_idm']).toBeUndefined();
-            expect(localStorageMock.store['clianta_grp_id']).toBeUndefined();
+            expect(localStorageMock.store['eutexa_idm']).toBeUndefined();
+            expect(localStorageMock.store['eutexa_grp_id']).toBeUndefined();
         });
 
         it('should ignore storage events on third-party SDK keys', () => {
@@ -646,10 +646,10 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
     });
 
-    describe('window.__clianta_group escape hatch', () => {
-        it('should pick up a standalone __clianta_group with the identified user', () => {
-            (window as any).__clianta_user = { email: 'standalone@example.com' };
-            (window as any).__clianta_group = { id: 'g-123', name: 'Group 123' };
+    describe('window.__eutexa_group escape hatch', () => {
+        it('should pick up a standalone __eutexa_group with the identified user', () => {
+            (window as any).__eutexa_user = { email: 'standalone@example.com' };
+            (window as any).__eutexa_group = { id: 'g-123', name: 'Group 123' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -659,11 +659,11 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
     });
 
-    describe('clianta:group window event', () => {
-        it('should call tracker.group() on dispatched clianta:group event', () => {
+    describe('eutexa:group window event', () => {
+        it('should call tracker.group() on dispatched eutexa:group event', () => {
             plugin.init(tracker);
 
-            window.dispatchEvent(new CustomEvent('clianta:group', {
+            window.dispatchEvent(new CustomEvent('eutexa:group', {
                 detail: { id: 'event-grp', name: 'From event', traits: { plan: 'pro' } },
             }));
 
@@ -673,9 +673,9 @@ describe('AutoIdentifyPlugin (Production)', () => {
             }));
         });
 
-        it('should ignore clianta:group events with no id', () => {
+        it('should ignore eutexa:group events with no id', () => {
             plugin.init(tracker);
-            window.dispatchEvent(new CustomEvent('clianta:group', { detail: { name: 'No id' } }));
+            window.dispatchEvent(new CustomEvent('eutexa:group', { detail: { name: 'No id' } }));
             expect(tracker.group).not.toHaveBeenCalled();
         });
     });
@@ -684,10 +684,10 @@ describe('AutoIdentifyPlugin (Production)', () => {
         // These tests are sensitive to sticky-group state from earlier tests; reset
         // it explicitly so they pass regardless of run order.
         beforeEach(() => {
-            delete localStorageMock.store['clianta_grp_id'];
-            delete localStorageMock.store['clianta_grp_name'];
-            delete localStorageMock.store['clianta_idm'];
-            delete localStorageMock.store['clianta_idm_src'];
+            delete localStorageMock.store['eutexa_grp_id'];
+            delete localStorageMock.store['eutexa_grp_name'];
+            delete localStorageMock.store['eutexa_idm'];
+            delete localStorageMock.store['eutexa_idm_src'];
         });
 
         it("'off' disables group calls entirely", () => {
@@ -737,10 +737,10 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     describe('Sticky group cache', () => {
         it('should restore a sticky group on init and call tracker.group()', () => {
-            localStorageMock.store['clianta_idm'] = 'sticky@acme.com';
-            localStorageMock.store['clianta_idm_src'] = 'localStorage:auth_token';
-            localStorageMock.store['clianta_grp_id'] = 'sticky-grp';
-            localStorageMock.store['clianta_grp_name'] = 'Sticky Group';
+            localStorageMock.store['eutexa_idm'] = 'sticky@acme.com';
+            localStorageMock.store['eutexa_idm_src'] = 'localStorage:auth_token';
+            localStorageMock.store['eutexa_grp_id'] = 'sticky-grp';
+            localStorageMock.store['eutexa_grp_name'] = 'Sticky Group';
 
             plugin.init(tracker);
 
@@ -759,8 +759,8 @@ describe('AutoIdentifyPlugin (Production)', () => {
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
 
-            expect(localStorageMock.store['clianta_grp_id']).toBe('persist-org');
-            expect(localStorageMock.store['clianta_grp_name']).toBe('Persist Org');
+            expect(localStorageMock.store['eutexa_grp_id']).toBe('persist-org');
+            expect(localStorageMock.store['eutexa_grp_name']).toBe('Persist Org');
         });
     });
 
@@ -874,7 +874,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     describe('email validation', () => {
         it('should reject strings that look like emails but are not', () => {
-            (window as any).__clianta_user = { email: 'user@v2.0' };
+            (window as any).__eutexa_user = { email: 'user@v2.0' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -883,7 +883,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
 
         it('should reject short TLDs', () => {
-            (window as any).__clianta_user = { email: 'config@a.b' };
+            (window as any).__eutexa_user = { email: 'config@a.b' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -892,7 +892,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
 
         it('should accept valid emails with subdomains', () => {
-            (window as any).__clianta_user = { email: 'user@sub.domain.co.uk' };
+            (window as any).__eutexa_user = { email: 'user@sub.domain.co.uk' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -967,11 +967,11 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
     });
 
-    describe('clianta:identify window event hook', () => {
-        it('should identify on dispatched clianta:identify event', () => {
+    describe('eutexa:identify window event hook', () => {
+        it('should identify on dispatched eutexa:identify event', () => {
             plugin.init(tracker);
 
-            window.dispatchEvent(new CustomEvent('clianta:identify', {
+            window.dispatchEvent(new CustomEvent('eutexa:identify', {
                 detail: { email: 'hook@example.com', firstName: 'Hook', lastName: 'User' },
             }));
 
@@ -981,26 +981,26 @@ describe('AutoIdentifyPlugin (Production)', () => {
             });
         });
 
-        it('should ignore clianta:identify with invalid email', () => {
+        it('should ignore eutexa:identify with invalid email', () => {
             plugin.init(tracker);
-            window.dispatchEvent(new CustomEvent('clianta:identify', {
+            window.dispatchEvent(new CustomEvent('eutexa:identify', {
                 detail: { email: 'not-an-email' },
             }));
             expect(tracker.identify).not.toHaveBeenCalled();
         });
 
-        it('should re-allow identification after clianta:logout event', () => {
+        it('should re-allow identification after eutexa:logout event', () => {
             plugin.init(tracker);
 
-            window.dispatchEvent(new CustomEvent('clianta:identify', {
+            window.dispatchEvent(new CustomEvent('eutexa:identify', {
                 detail: { email: 'first@example.com' },
             }));
             expect(tracker.identify).toHaveBeenCalledTimes(1);
 
             // Logout clears in-memory guard
-            window.dispatchEvent(new Event('clianta:logout'));
+            window.dispatchEvent(new Event('eutexa:logout'));
 
-            window.dispatchEvent(new CustomEvent('clianta:identify', {
+            window.dispatchEvent(new CustomEvent('eutexa:identify', {
                 detail: { email: 'second@example.com' },
             }));
             expect(tracker.identify).toHaveBeenCalledTimes(2);
@@ -1012,7 +1012,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     describe('deduplication and lifecycle', () => {
         it('should not identify same user twice', () => {
-            (window as any).__clianta_user = { email: 'dedup@example.com' };
+            (window as any).__eutexa_user = { email: 'dedup@example.com' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -1022,7 +1022,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
         });
 
         it('should cancel all remaining polls after identifying user', () => {
-            (window as any).__clianta_user = { email: 'stop@example.com' };
+            (window as any).__eutexa_user = { email: 'stop@example.com' };
 
             plugin.init(tracker);
             vi.advanceTimersByTime(2500);
@@ -1044,7 +1044,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
             plugin.init(tracker);
             plugin.destroy();
 
-            (window as any).__clianta_user = { email: 'late@example.com' };
+            (window as any).__eutexa_user = { email: 'late@example.com' };
             vi.advanceTimersByTime(60_000);
 
             expect(tracker.identify).not.toHaveBeenCalled();
@@ -1055,7 +1055,7 @@ describe('AutoIdentifyPlugin (Production)', () => {
 
     describe('exponential backoff polling', () => {
         it('should check at 2s but not at 1s', () => {
-            (window as any).__clianta_user = { email: 'timing@example.com' };
+            (window as any).__eutexa_user = { email: 'timing@example.com' };
 
             plugin.init(tracker);
 

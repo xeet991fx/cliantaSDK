@@ -1,9 +1,9 @@
 /**
- * Clianta SDK - Configuration
+ * Eutexa SDK - Configuration
  * @see SDK_VERSION in core/config.ts
  */
 
-import type { CliantaConfig, PluginName } from '../types';
+import type { EutexaConfig, PluginName } from '../types';
 
 /** SDK Version (kept in sync with package.json) */
 export const SDK_VERSION = '1.8.0';
@@ -11,26 +11,26 @@ export const SDK_VERSION = '1.8.0';
 /** Default API endpoint — reads from env or falls back to localhost */
 export const getDefaultApiEndpoint = (): string => {
     // Next.js (process.env)
-    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CLIANTA_API_ENDPOINT) {
-        return process.env.NEXT_PUBLIC_CLIANTA_API_ENDPOINT;
+    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_EUTEXA_API_ENDPOINT) {
+        return process.env.NEXT_PUBLIC_EUTEXA_API_ENDPOINT;
     }
     // Vite / Vue / Svelte / SvelteKit (import.meta.env)
     try {
         // @ts-ignore — import.meta.env is Vite-specific
-        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLIANTA_API_ENDPOINT) {
+        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EUTEXA_API_ENDPOINT) {
             // @ts-ignore
-            return import.meta.env.VITE_CLIANTA_API_ENDPOINT;
+            return import.meta.env.VITE_EUTEXA_API_ENDPOINT;
         }
     } catch {
         // import.meta not available in this environment
     }
     // Create React App (process.env)
-    if (typeof process !== 'undefined' && process.env?.REACT_APP_CLIANTA_API_ENDPOINT) {
-        return process.env.REACT_APP_CLIANTA_API_ENDPOINT;
+    if (typeof process !== 'undefined' && process.env?.REACT_APP_EUTEXA_API_ENDPOINT) {
+        return process.env.REACT_APP_EUTEXA_API_ENDPOINT;
     }
     // Generic fallback
-    if (typeof process !== 'undefined' && process.env?.CLIANTA_API_ENDPOINT) {
-        return process.env.CLIANTA_API_ENDPOINT;
+    if (typeof process !== 'undefined' && process.env?.EUTEXA_API_ENDPOINT) {
+        return process.env.EUTEXA_API_ENDPOINT;
     }
 
     // No env var found — warn if we're not on localhost (likely a production misconfiguration)
@@ -39,9 +39,9 @@ export const getDefaultApiEndpoint = (): string => {
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     if (!isLocalhost && typeof console !== 'undefined') {
         console.warn(
-            '[Clianta] No API endpoint configured. ' +
-            'Set NEXT_PUBLIC_CLIANTA_API_ENDPOINT (Next.js), VITE_CLIANTA_API_ENDPOINT (Vite), ' +
-            'or pass apiEndpoint directly to clianta(). ' +
+            '[Eutexa] No API endpoint configured. ' +
+            'Set NEXT_PUBLIC_EUTEXA_API_ENDPOINT (Next.js), VITE_EUTEXA_API_ENDPOINT (Vite), ' +
+            'or pass apiEndpoint directly to eutexa(). ' +
             'Falling back to localhost — tracking will not work in production.'
         );
     }
@@ -79,7 +79,7 @@ export const DEFAULT_PLUGINS: PluginName[] = [
 ];
 
 /** Default configuration values */
-export const DEFAULT_CONFIG: Required<CliantaConfig> = {
+export const DEFAULT_CONFIG: Required<EutexaConfig> = {
     projectId: '',
     apiEndpoint: getDefaultApiEndpoint(),
     debug: false,
@@ -125,7 +125,7 @@ export const DOWNLOAD_EXTENSIONS = [
 /**
  * Merge user config with defaults
  */
-export function mergeConfig(userConfig: CliantaConfig = {}): Required<CliantaConfig> {
+export function mergeConfig(userConfig: EutexaConfig = {}): Required<EutexaConfig> {
     return {
         ...DEFAULT_CONFIG,
         ...userConfig,

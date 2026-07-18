@@ -1,9 +1,9 @@
-# Clianta SDK
+# Eutexa SDK
 
 > **Enterprise-grade visitor intelligence for your CRM.**
-> Auto-captures every interaction on your website and feeds it directly into Clianta CRM — zero manual tracking code required.
+> Auto-captures every interaction on your website and feeds it directly into Eutexa CRM — zero manual tracking code required.
 
-[![npm](https://img.shields.io/npm/v/@clianta/sdk)](https://www.npmjs.com/package/@clianta/sdk)
+[![npm](https://img.shields.io/npm/v/@eutexa/sdk)](https://www.npmjs.com/package/@eutexa/sdk)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue)](https://www.typescriptlang.org/)
 
 ---
@@ -13,7 +13,7 @@
 ### 1. Install
 
 ```bash
-npm install @clianta/sdk
+npm install @eutexa/sdk
 ```
 
 ### 2. Integrate
@@ -27,23 +27,23 @@ Pick your framework below. Each section includes the correct env vars and file p
 **Environment Variables** — set in `.env` or your hosting dashboard (Vercel, Netlify, etc.):
 
 ```bash
-NEXT_PUBLIC_CLIANTA_PROJECT_ID=your-project-id
-NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+NEXT_PUBLIC_EUTEXA_PROJECT_ID=your-project-id
+NEXT_PUBLIC_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — wrap your app in `app/layout.tsx`:
 
 ```tsx
 // app/layout.tsx
-import { CliantaProvider } from '@clianta/sdk/react';
+import { EutexaProvider } from '@eutexa/sdk/react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <CliantaProvider projectId={process.env.NEXT_PUBLIC_CLIANTA_PROJECT_ID!}>
+        <EutexaProvider projectId={process.env.NEXT_PUBLIC_EUTEXA_PROJECT_ID!}>
           {children}
-        </CliantaProvider>
+        </EutexaProvider>
       </body>
     </html>
   );
@@ -57,8 +57,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — wrap your app in `src/main.tsx`:
@@ -67,14 +67,14 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { CliantaProvider } from '@clianta/sdk/react';
+import { EutexaProvider } from '@eutexa/sdk/react';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <CliantaProvider projectId={import.meta.env.VITE_CLIANTA_PROJECT_ID}>
+    <EutexaProvider projectId={import.meta.env.VITE_EUTEXA_PROJECT_ID}>
       <App />
-    </CliantaProvider>
+    </EutexaProvider>
   </React.StrictMode>
 );
 ```
@@ -86,8 +86,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — register the plugin in `src/main.ts`:
@@ -95,12 +95,12 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```typescript
 // src/main.ts
 import { createApp } from 'vue';
-import { CliantaPlugin } from '@clianta/sdk/vue';
+import { EutexaPlugin } from '@eutexa/sdk/vue';
 import App from './App.vue';
 
 const app = createApp(App);
-app.use(CliantaPlugin, {
-  projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
+app.use(EutexaPlugin, {
+  projectId: import.meta.env.VITE_EUTEXA_PROJECT_ID,
 });
 app.mount('#app');
 ```
@@ -115,27 +115,27 @@ app.mount('#app');
 // src/environments/environment.ts
 export const environment = {
   production: false,
-  cliantaProjectId: 'your-project-id',
-  cliantaApiEndpoint: 'https://your-crm-backend.com',
+  eutexaProjectId: 'your-project-id',
+  eutexaApiEndpoint: 'https://your-crm-backend.com',
 };
 ```
 
-**Integration** — create a service at `src/app/clianta.service.ts`:
+**Integration** — create a service at `src/app/eutexa.service.ts`:
 
 ```typescript
-// src/app/clianta.service.ts
+// src/app/eutexa.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
-import { createCliantaTracker, CliantaTrackerInstance } from '@clianta/sdk/angular';
+import { createEutexaTracker, EutexaTrackerInstance } from '@eutexa/sdk/angular';
 import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
-export class CliantaService implements OnDestroy {
-  private instance: CliantaTrackerInstance;
+export class EutexaService implements OnDestroy {
+  private instance: EutexaTrackerInstance;
 
   constructor() {
-    this.instance = createCliantaTracker({
-      projectId: environment.cliantaProjectId,
-      apiEndpoint: environment.cliantaApiEndpoint,
+    this.instance = createEutexaTracker({
+      projectId: environment.eutexaProjectId,
+      apiEndpoint: environment.eutexaApiEndpoint,
     });
   }
 
@@ -160,8 +160,8 @@ export class CliantaService implements OnDestroy {
 **Environment Variables** — set in `.env` or your hosting dashboard:
 
 ```bash
-VITE_CLIANTA_PROJECT_ID=your-project-id
-VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
+VITE_EUTEXA_PROJECT_ID=your-project-id
+VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```
 
 **Integration** — initialize in `src/routes/+layout.svelte`:
@@ -169,15 +169,15 @@ VITE_CLIANTA_API_ENDPOINT=https://your-crm-backend.com
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { initClianta } from '@clianta/sdk/svelte';
+  import { initEutexa } from '@eutexa/sdk/svelte';
   import { setContext } from 'svelte';
 
-  const clianta = initClianta({
-    projectId: import.meta.env.VITE_CLIANTA_PROJECT_ID,
-    apiEndpoint: import.meta.env.VITE_CLIANTA_API_ENDPOINT,
+  const eutexa = initEutexa({
+    projectId: import.meta.env.VITE_EUTEXA_PROJECT_ID,
+    apiEndpoint: import.meta.env.VITE_EUTEXA_API_ENDPOINT,
   });
 
-  setContext('clianta', clianta);
+  setContext('eutexa', eutexa);
 </script>
 
 <slot />
@@ -215,9 +215,9 @@ The SDK works perfectly without any of the following. These are for teams that w
 ### Custom Event Tracking
 
 ```typescript
-import { useClianta } from '@clianta/sdk/react';
+import { useEutexa } from '@eutexa/sdk/react';
 
-const tracker = useClianta();
+const tracker = useEutexa();
 tracker?.track('purchase', 'Order Completed', { value: 99, currency: 'USD' });
 ```
 
@@ -260,7 +260,7 @@ await tracker?.createOpportunity({ title: 'Enterprise Deal', contactEmail: 'vp@a
 
 ```tsx
 // Buffer events until consent is given:
-<CliantaProvider projectId="xxx" config={{ consent: { waitForConsent: true } }}>
+<EutexaProvider projectId="xxx" config={{ consent: { waitForConsent: true } }}>
 
 // In your cookie banner:
 tracker?.consent({ analytics: true, marketing: false });
@@ -276,7 +276,7 @@ tracker?.deleteData();
 Full type support included:
 
 ```typescript
-import type { TrackerCore, CliantaConfig, GroupTraits, MiddlewareFn } from '@clianta/sdk';
+import type { TrackerCore, EutexaConfig, GroupTraits, MiddlewareFn } from '@eutexa/sdk';
 ```
 
 ---
@@ -285,7 +285,7 @@ import type { TrackerCore, CliantaConfig, GroupTraits, MiddlewareFn } from '@cli
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `projectId` | `string` | — | Your project ID from Clianta dashboard |
+| `projectId` | `string` | — | Your project ID from Eutexa dashboard |
 | `apiEndpoint` | `string` | Auto-detect from env vars | CRM backend URL |
 | `debug` | `boolean` | `false` | Enable verbose console logging |
 | `plugins` | `PluginName[]` | All enabled | Plugins to activate |
@@ -308,6 +308,6 @@ import type { TrackerCore, CliantaConfig, GroupTraits, MiddlewareFn } from '@cli
 
 ## Support
 
-- **Documentation**: [docs.clianta.online](https://docs.clianta.online)
-- **NPM**: [@clianta/sdk](https://www.npmjs.com/package/@clianta/sdk)
-- **Email**: support@clianta.online
+- **Documentation**: [docs.eutexa.online](https://docs.eutexa.online)
+- **NPM**: [@eutexa/sdk](https://www.npmjs.com/package/@eutexa/sdk)
+- **Email**: support@eutexa.online

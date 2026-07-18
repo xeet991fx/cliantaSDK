@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Clianta SDK will be documented in this file.
+All notable changes to the Eutexa SDK will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -15,9 +15,9 @@ missing tracking data. Every fix below addresses one of those root causes.
 
 Drop the SDK into your app — three steps, zero code changes elsewhere:
 
-1. `npm install @clianta/sdk@1.8.0`
-2. Add the env vars (`NEXT_PUBLIC_CLIANTA_PROJECT_ID`, `NEXT_PUBLIC_CLIANTA_API_ENDPOINT`).
-3. Wrap your root layout with `<CliantaProvider>` (or the equivalent for
+1. `npm install @eutexa/sdk@1.8.0`
+2. Add the env vars (`NEXT_PUBLIC_EUTEXA_PROJECT_ID`, `NEXT_PUBLIC_EUTEXA_API_ENDPOINT`).
+3. Wrap your root layout with `<EutexaProvider>` (or the equivalent for
    your framework).
 
 That's it. Page views, scrolls, clicks, engagement, performance, downloads,
@@ -45,9 +45,9 @@ the SDK's CRM surface to "automatic":
      slug), Cognito's `custom:organization_id` user attributes,
      MSAL's `account.tenantId`, Auth0's user object, Keycloak's
      `tokenParsed`.
-  3. `window.__clianta_group = { id, name?, traits? }` global escape
+  3. `window.__eutexa_group = { id, name?, traits? }` global escape
      hatch.
-  4. `clianta:group` window event hook (`new CustomEvent('clianta:group',
+  4. `eutexa:group` window event hook (`new CustomEvent('eutexa:group',
      { detail: { id, name, traits } })`).
   5. **Email-domain fallback** — derive the company from the email
      domain (`ada@acme.com` → company `acme.com`), with a built-in
@@ -59,7 +59,7 @@ the SDK's CRM surface to "automatic":
   `'domain'` (email-domain only) | `'off'`.
 
 - **Sticky group cache** — the resolved group is cached in
-  localStorage (`clianta_grp_id`, `clianta_grp_name`) so the next page
+  localStorage (`eutexa_grp_id`, `eutexa_grp_name`) so the next page
   load re-emits the group without waiting for a fresh JWT scan, and
   cleared automatically on logout.
 
@@ -104,13 +104,13 @@ coverage but adds five safeguards that close the false-positive holes:
    prefer the one whose domain matches the page's hostname (`+15` score
    bonus). `ada@acme.com` wins over `agent@intercom.io` on `acme.com`.
 4. **Sticky identification** — once identified, cache the email in
-   `localStorage` (`clianta_idm`). On the next load, prefer the cached
+   `localStorage` (`eutexa_idm`). On the next load, prefer the cached
    email until storage proves it has changed. No flapping between
    candidates.
 5. **Auto-logout** — listen for `storage` events that clear an
    auth-shaped key. When detected, fire `tracker.reset()` automatically
    so the next user on the same browser is correctly anonymous, and
-   dispatch a `clianta:logout` window event other code can listen for.
+   dispatch a `eutexa:logout` window event other code can listen for.
 
 The new `autoIdentifyMode` config has four values:
 - `'auto'` (default) — providers + JWT-only cookie/storage scan + the
@@ -124,17 +124,17 @@ The new `autoIdentifyMode` config has four values:
 ### Added
 
 - **`autoIdentifyMode` config option** — see above.
-- **`clianta:identify` window event** — universal manual hook for any auth
+- **`eutexa:identify` window event** — universal manual hook for any auth
   system the SDK doesn't auto-detect:
   ```ts
-  window.dispatchEvent(new CustomEvent('clianta:identify', {
+  window.dispatchEvent(new CustomEvent('eutexa:identify', {
     detail: { email: 'user@example.com', firstName: 'Ada', lastName: 'Lovelace' },
   }));
   ```
-- **`clianta:logout` window event** — emitted by the SDK when auto-logout
+- **`eutexa:logout` window event** — emitted by the SDK when auto-logout
   fires; can also be dispatched by app code to manually clear identity.
 - **`SPA Navigation` performance event** — emits on each
-  `clianta:navigation` so SPA route changes are no longer invisible to
+  `eutexa:navigation` so SPA route changes are no longer invisible to
   perf dashboards.
 - **`shortPage: true` flag on scroll milestones** — pages whose content
   fits in the viewport now emit all four 25/50/75/100 milestones once,
@@ -181,7 +181,7 @@ The new `autoIdentifyMode` config has four values:
   cycle. Now both report at most once per page lifecycle on
   visibility:hidden / pagehide / SPA navigation.
 - **Performance plugin is SPA-aware.** Web Vitals observers re-arm on
-  `clianta:navigation`, so SPA routes are no longer invisible to perf
+  `eutexa:navigation`, so SPA routes are no longer invisible to perf
   dashboards.
 - **Page-view referrer.** Removed the `properties.referrer = 'direct'`
   default; the canonical referrer now lives only at top-level
@@ -232,14 +232,14 @@ want to roll out together for the data-quality fixes to land end-to-end:
 - **Event middleware API** — `use((event, next) => { ... })` to intercept, transform, or drop events before they're sent. Supports chaining multiple middleware functions
 - **`onReady()` callback** — Register callbacks that fire when the SDK is fully initialized. If already ready, fires immediately
 - **`isReady()` method** — Check initialization state synchronously
-- **React `ErrorBoundary`** — `CliantaProvider` now wraps children in an ErrorBoundary to prevent SDK errors from crashing the host application
-- **React `useCliantaReady()` hook** — Returns `{ isReady, tracker }` for components that need to wait for initialization
-- **React `onError` prop** — `CliantaProvider` accepts an `onError` callback for custom error handling
+- **React `ErrorBoundary`** — `EutexaProvider` now wraps children in an ErrorBoundary to prevent SDK errors from crashing the host application
+- **React `useEutexaReady()` hook** — Returns `{ isReady, tracker }` for components that need to wait for initialization
+- **React `onError` prop** — `EutexaProvider` accepts an `onError` callback for custom error handling
 - **New types** — `GroupTraits`, `MiddlewareFn` exported from main SDK entry
 
 ### Changed
 - `TrackerCore` interface expanded with `group()`, `alias()`, `screen()`, `use()`, `onReady()`, `isReady()` methods
-- React `CliantaContext` now provides `{ tracker, isReady }` instead of just `tracker`
+- React `EutexaContext` now provides `{ tracker, isReady }` instead of just `tracker`
 - `track()` now runs events through the middleware pipeline before queueing
 - Events include `groupId` field when visitor is associated with a group
 
@@ -271,8 +271,8 @@ want to roll out together for the data-quality fixes to land end-to-end:
 - **innerHTML → textContent** — Popup form submit button uses safe DOM API
 
 ### Fixed
-- **CRITICAL: Double `history.pushState` patching** — ScrollPlugin and PageViewPlugin were both monkey-patching the History API independently, causing double page view events on SPA navigation. ScrollPlugin now listens for a `clianta:navigation` custom event instead
-- **CRITICAL: React `useEffect` re-initialization** — `CliantaProvider` was destroying and recreating the tracker on every render when config was defined inline (object ref changed). Now depends on `config.projectId` (stable string)
+- **CRITICAL: Double `history.pushState` patching** — ScrollPlugin and PageViewPlugin were both monkey-patching the History API independently, causing double page view events on SPA navigation. ScrollPlugin now listens for a `eutexa:navigation` custom event instead
+- **CRITICAL: React `useEffect` re-initialization** — `EutexaProvider` was destroying and recreating the tracker on every render when config was defined inline (object ref changed). Now depends on `config.projectId` (stable string)
 - **React context null on first render** — Switched from `useRef` to `useState` for tracker instance so context re-renders when ready
 - **PopupForms cleanup** — Delay timers and click trigger listeners are now properly tracked and cleaned up on `destroy()`
 - **`reset()` cleanup** — Now clears `contactId` and `pendingIdentify` alongside visitor/session IDs
@@ -282,11 +282,11 @@ want to roll out together for the data-quality fixes to land end-to-end:
 - **Event schema validation** — `registerEventSchema()` validates event properties in debug mode
 - **`persistMode` config** — Choose `'session'` (default), `'local'` (cross-session), or `'none'` for queue persistence
 - **`websiteDomain` property** — Automatically included on all tracked events
-- **Angular integration** — `@clianta/sdk/angular` module
-- **Svelte integration** — `@clianta/sdk/svelte` module
+- **Angular integration** — `@eutexa/sdk/angular` module
+- **Svelte integration** — `@eutexa/sdk/svelte` module
 
 ### Changed
-- `CliantaProvider` uses `useState` instead of `useRef` for tracker instance
+- `EutexaProvider` uses `useState` instead of `useRef` for tracker instance
 - Queue persistence defaults to `sessionStorage` (was `localStorage`)
 
 ## [1.4.0] - 2026-02-27
@@ -315,7 +315,7 @@ want to roll out together for the data-quality fixes to land end-to-end:
   - Status tracking: `pending`, `success`, `failed`
 - **deleteEventTrigger()** - New CRM client method to delete event triggers by ID
   - `crm.deleteEventTrigger(triggerId)` - removes a trigger from the workspace
-- **Vue Type Augmentation** - Added `ComponentCustomProperties` declaration for `$clianta` global property
+- **Vue Type Augmentation** - Added `ComponentCustomProperties` declaration for `$eutexa` global property
   - Enables type-safe access to tracker via Options API in Vue components
 - **Export: ContactUpdateAction** - Now exported from main SDK entry point
 
@@ -365,7 +365,7 @@ want to roll out together for the data-quality fixes to land end-to-end:
 
 ### Added
 - PopupForms plugin for lead capture popups with multiple trigger types (delay, scroll, exit intent, click)
-- React integration with `CliantaProvider`, `useClianta()`, and `useCliantaTrack()` hooks
+- React integration with `EutexaProvider`, `useEutexa()`, and `useEutexaTrack()` hooks
 - GDPR right-to-erasure via `deleteData()` method
 - Anonymous tracking mode for pre-consent data collection
 - Event buffering when `waitForConsent` is enabled
@@ -377,7 +377,7 @@ want to roll out together for the data-quality fixes to land end-to-end:
 ## [1.0.0] - 2026-01-30
 
 ### Added
-- Initial release of Clianta SDK
+- Initial release of Eutexa SDK
 - **Tracking & Analytics**
   - Automatic page view tracking with SPA support
   - Form tracking with auto-identification
@@ -438,22 +438,22 @@ want to roll out together for the data-quality fixes to land end-to-end:
 
 ### From MorrisB SDK v3.x
 
-The Clianta SDK is a complete rebrand and enhancement of the MorrisB Tracking SDK.
+The Eutexa SDK is a complete rebrand and enhancement of the MorrisB Tracking SDK.
 
 **Breaking Changes:**
-1. Package name changed from `@morrisb/tracker` to `@clianta/sdk`
-2. Global variable changed from `MorrisB` to `Clianta`
-3. Initialization function changed from `morrisb()` to `clianta()`
-4. Default API endpoint changed to `https://api.clianta.online`
+1. Package name changed from `@morrisb/tracker` to `@eutexa/sdk`
+2. Global variable changed from `MorrisB` to `Eutexa`
+3. Initialization function changed from `morrisb()` to `eutexa()`
+4. Default API endpoint changed to `https://api.eutexa.com`
 
 **Migration Steps:**
 
 ```diff
 - import { morrisb } from '@morrisb/tracker';
-+ import { clianta } from '@clianta/sdk';
++ import { eutexa } from '@eutexa/sdk';
 
 - const tracker = morrisb('workspace-id');
-+ const tracker = clianta('workspace-id');
++ const tracker = eutexa('workspace-id');
 ```
 
 **New Features:**

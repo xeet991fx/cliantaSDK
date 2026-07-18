@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Clianta SDK connects to your CRM backend. This guide covers configuring the SDK to point to your self-hosted instance.
+The Eutexa SDK connects to your CRM backend. This guide covers configuring the SDK to point to your self-hosted instance.
 
 ## SDK Configuration
 
@@ -10,16 +10,16 @@ The SDK auto-detects your backend URL from environment variables:
 
 ```bash
 # Next.js
-NEXT_PUBLIC_CLIANTA_API_ENDPOINT=https://your-api-server.com
+NEXT_PUBLIC_EUTEXA_API_ENDPOINT=https://your-api-server.com
 
 # Vite / Vue / Svelte
-VITE_CLIANTA_API_ENDPOINT=https://your-api-server.com
+VITE_EUTEXA_API_ENDPOINT=https://your-api-server.com
 ```
 
 Or pass it directly (Angular, Svelte):
 
 ```typescript
-createCliantaTracker({
+createEutexaTracker({
   projectId: 'your-project-id',
   apiEndpoint: 'https://your-api-server.com',
 });
@@ -63,7 +63,7 @@ Your backend must implement these public endpoints for client-side SDK communica
 
 ## CORS Configuration
 
-Your backend must allow CORS from websites where the SDK is installed. Configure allowed domains in **Settings → Developer → Allowed Domains** in the Clianta dashboard.
+Your backend must allow CORS from websites where the SDK is installed. Configure allowed domains in **Settings → Developer → Allowed Domains** in the Eutexa dashboard.
 
 Backend example:
 

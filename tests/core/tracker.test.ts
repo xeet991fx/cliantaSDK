@@ -99,7 +99,7 @@ describe('Tracker', () => {
 
     describe('Initialization', () => {
         it('should require workspace ID', () => {
-            expect(() => new Tracker('')).toThrow('[Clianta] Workspace ID is required');
+            expect(() => new Tracker('')).toThrow('[Eutexa] Workspace ID is required');
         });
 
         it('should initialize with workspace ID', () => {

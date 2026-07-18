@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Plugin Base
+ * Eutexa SDK - Plugin Base
  * @see SDK_VERSION in core/config.ts
  */
 

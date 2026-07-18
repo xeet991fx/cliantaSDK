@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Error Tracking Plugin
+ * Eutexa SDK - Error Tracking Plugin
  * @see SDK_VERSION in core/config.ts
  */
 

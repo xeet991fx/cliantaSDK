@@ -64,8 +64,8 @@ describe('DownloadsPlugin', () => {
 
         it('should setup SPA navigation reset', () => {
             plugin.init(mockTracker);
-            // Plugin listens for clianta:navigation custom event
-            expect(window.addEventListener).toHaveBeenCalledWith('clianta:navigation', expect.any(Function));
+            // Plugin listens for eutexa:navigation custom event
+            expect(window.addEventListener).toHaveBeenCalledWith('eutexa:navigation', expect.any(Function));
         });
 
         it('should register popstate handler', () => {
@@ -181,7 +181,7 @@ describe('DownloadsPlugin', () => {
             expect(mockTracker.track).toHaveBeenCalledTimes(1);
 
             // Dispatch navigation event (resets tracking)
-            window.dispatchEvent(new Event('clianta:navigation'));
+            window.dispatchEvent(new Event('eutexa:navigation'));
 
             // Same download should be tracked again
             link.click();

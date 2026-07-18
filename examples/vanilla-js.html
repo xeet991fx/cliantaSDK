@@ -4,16 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clianta SDK - HTML Integration Guide</title>
+    <title>Eutexa SDK - HTML Integration Guide</title>
 
     <!-- ============================================
          OPTION 1: Simple Integration (Recommended)
          ============================================ -->
-    <script src="https://cdn.clianta.online/sdk/v1/clianta.min.js"></script>
+    <script src="https://cdn.eutexa.com/sdk/v1/eutexa.min.js"></script>
     <script>
         // Initialize tracker with basic config
-        var tracker = clianta('YOUR_WORKSPACE_ID', {
-            apiEndpoint: 'https://api.clianta.online',
+        var tracker = eutexa('YOUR_WORKSPACE_ID', {
+            apiEndpoint: 'https://api.eutexa.com',
             debug: false
         });
     </script>
@@ -85,7 +85,7 @@
 </head>
 
 <body>
-    <h1>Clianta SDK - HTML Examples</h1>
+    <h1>Eutexa SDK - HTML Examples</h1>
 
     <!-- Basic Tracking -->
     <div class="section">
@@ -245,13 +245,13 @@
 
     <script>
         // Show cookie banner on first visit
-        if (!localStorage.getItem('clianta_consent_given')) {
+        if (!localStorage.getItem('eutexa_consent_given')) {
             document.getElementById('cookieBanner').classList.add('show');
         }
 
         function hideCookieBanner() {
             document.getElementById('cookieBanner').classList.remove('show');
-            localStorage.setItem('clianta_consent_given', 'true');
+            localStorage.setItem('eutexa_consent_given', 'true');
         }
 
         function acceptEssentialOnly() {
@@ -273,8 +273,8 @@
          
          Initialize tracking that waits for consent:
          
-         var tracker = clianta('YOUR_WORKSPACE_ID', {
-             apiEndpoint: 'https://api.clianta.online',
+         var tracker = eutexa('YOUR_WORKSPACE_ID', {
+             apiEndpoint: 'https://api.eutexa.com',
              consent: {
                  waitForConsent: true,  // Buffer events until consent
                  anonymousMode: true    // Use anon ID until consent
@@ -291,8 +291,8 @@
          
          No persistent cookies or localStorage:
          
-         var tracker = clianta('YOUR_WORKSPACE_ID', {
-             apiEndpoint: 'https://api.clianta.online',
+         var tracker = eutexa('YOUR_WORKSPACE_ID', {
+             apiEndpoint: 'https://api.eutexa.com',
              cookielessMode: true  // Session storage only
          });
          

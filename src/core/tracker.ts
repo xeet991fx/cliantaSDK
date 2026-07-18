@@ -1,10 +1,10 @@
 /**
- * Clianta SDK - Main Tracker Class
+ * Eutexa SDK - Main Tracker Class
  * @see SDK_VERSION in core/config.ts
  */
 
 import type {
-    CliantaConfig,
+    EutexaConfig,
     TrackerCore,
     TrackingEvent,
     EventType,
@@ -39,11 +39,11 @@ import {
 } from '../utils';
 
 /**
- * Main Clianta Tracker Class
+ * Main Eutexa Tracker Class
  */
 export class Tracker implements TrackerCore {
     private workspaceId: string;
-    private config: Required<CliantaConfig>;
+    private config: Required<EutexaConfig>;
     private transport: Transport;
     private queue: EventQueue;
     private plugins: Plugin[] = [];
@@ -64,9 +64,9 @@ export class Tracker implements TrackerCore {
     /** Ready callbacks */
     private readyCallbacks: (() => void)[] = [];
 
-    constructor(workspaceId: string, userConfig: CliantaConfig = {}) {
+    constructor(workspaceId: string, userConfig: EutexaConfig = {}) {
         if (!workspaceId) {
-            throw new Error('[Clianta] Workspace ID is required');
+            throw new Error('[Eutexa] Workspace ID is required');
         }
 
         this.workspaceId = workspaceId;
@@ -580,7 +580,7 @@ export class Tracker implements TrackerCore {
     /**
      * Get current configuration
      */
-    getConfig(): CliantaConfig {
+    getConfig(): EutexaConfig {
         return { ...this.config };
     }
 

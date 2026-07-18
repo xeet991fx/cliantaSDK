@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Click Tracking Plugin
+ * Eutexa SDK - Click Tracking Plugin
  * @see SDK_VERSION in core/config.ts
  */
 

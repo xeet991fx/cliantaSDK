@@ -7,7 +7,7 @@
  *   const profile = await visitor.getProfile();
  *
  * Usage (via Tracker):
- *   const tracker = clianta({ projectId: '...' });
+ *   const tracker = eutexa({ projectId: '...' });
  *   const profile = await tracker.visitor.getProfile();
  */
 import type {

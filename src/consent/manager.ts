@@ -1,5 +1,5 @@
 /**
- * Clianta SDK - Consent Manager
+ * Eutexa SDK - Consent Manager
  * Manages consent state and event buffering for GDPR/CCPA compliance
  * @see SDK_VERSION in core/config.ts
  */
