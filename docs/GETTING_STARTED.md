@@ -3,11 +3,11 @@
 ## Installation
 
 ```bash
-npm install @eutexa/sdk
+npm install eutexa-sdk
 # or
-yarn add @eutexa/sdk
+yarn add eutexa-sdk
 # or
-pnpm add @eutexa/sdk
+pnpm add eutexa-sdk
 ```
 
 ---
@@ -31,7 +31,7 @@ NEXT_PUBLIC_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 
 ```tsx
 // app/layout.tsx
-import { EutexaProvider } from '@eutexa/sdk/react';
+import { EutexaProvider } from 'eutexa-sdk/react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -62,7 +62,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { EutexaProvider } from '@eutexa/sdk/react';
+import { EutexaProvider } from 'eutexa-sdk/react';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -78,7 +78,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
 ```tsx
 // src/components/MyComponent.tsx
-import { useEutexa } from '@eutexa/sdk/react';
+import { useEutexa } from 'eutexa-sdk/react';
 
 function MyComponent() {
   const tracker = useEutexa();
@@ -107,7 +107,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```typescript
 // src/main.ts
 import { createApp } from 'vue';
-import { EutexaPlugin } from '@eutexa/sdk/vue';
+import { EutexaPlugin } from 'eutexa-sdk/vue';
 import App from './App.vue';
 
 const app = createApp(App);
@@ -122,7 +122,7 @@ app.mount('#app');
 ```vue
 <!-- src/components/MyComponent.vue -->
 <script setup>
-import { useEutexaTrack } from '@eutexa/sdk/vue';
+import { useEutexaTrack } from 'eutexa-sdk/vue';
 
 const track = useEutexaTrack();
 
@@ -152,7 +152,7 @@ export const environment = {
 ```typescript
 // src/app/eutexa.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
-import { createEutexaTracker, type EutexaTrackerInstance } from '@eutexa/sdk/angular';
+import { createEutexaTracker, type EutexaTrackerInstance } from 'eutexa-sdk/angular';
 import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -198,7 +198,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { initEutexa } from '@eutexa/sdk/svelte';
+  import { initEutexa } from 'eutexa-sdk/svelte';
   import { setContext } from 'svelte';
 
   const eutexa = initEutexa({

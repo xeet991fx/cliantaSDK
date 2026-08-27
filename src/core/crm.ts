@@ -159,7 +159,7 @@ export class CRMClient {
      *
      * @example
      * const crm = new CRMClient('http://localhost:5000', 'WORKSPACE_ID');
-     * crm.setApiKey('mm_live_...');
+     * crm.setApiKey('eutx_live_...');
      *
      * await crm.sendEvent({
      *   event: 'user.registered',

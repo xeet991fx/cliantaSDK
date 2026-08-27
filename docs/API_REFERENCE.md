@@ -3,7 +3,7 @@
 ## Initialization
 
 ```typescript
-import { eutexa } from '@eutexa/sdk';
+import { eutexa } from 'eutexa-sdk';
 
 const tracker = eutexa('your-project-id', {
   debug: true, // optional
@@ -222,7 +222,7 @@ tracker.use((event, next) => {
 ## React Hooks
 
 ```typescript
-import { useEutexa, useEutexaReady, useEutexaTrack } from '@eutexa/sdk/react';
+import { useEutexa, useEutexaReady, useEutexaTrack } from 'eutexa-sdk/react';
 
 // Get tracker instance
 const tracker = useEutexa();
@@ -238,7 +238,7 @@ track('button_click', 'CTA', { page: 'pricing' });
 ## Vue Composables
 
 ```typescript
-import { useEutexa, useEutexaTrack, useEutexaIdentify, useEutexaConsent } from '@eutexa/sdk/vue';
+import { useEutexa, useEutexaTrack, useEutexaIdentify, useEutexaConsent } from 'eutexa-sdk/vue';
 
 const tracker = useEutexa();         // Ref<TrackerCore | null>
 const track = useEutexaTrack();      // (type, name, props?) => void
@@ -283,5 +283,5 @@ import type {
   PluginName,
   GroupTraits,
   MiddlewareFn,
-} from '@eutexa/sdk';
+} from 'eutexa-sdk';
 ```

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { eutexa, CRMClient, type TrackerCore, type Contact } from '@eutexa/sdk';
+import { eutexa, CRMClient, type TrackerCore, type Contact } from 'eutexa-sdk';
 
 /**
  * React Hook for Eutexa Tracker

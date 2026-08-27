@@ -1,6 +1,6 @@
 {
-    "name": "@eutexa/sdk",
-    "version": "2.0.0",
+    "name": "eutexa-sdk",
+    "version": "2.0.1",
     "type": "module",
     "description": "Professional CRM SDK for Eutexa - Track visitors, manage contacts, opportunities, and analyze behavior",
     "main": "dist/eutexa.cjs.js",
@@ -68,7 +68,7 @@
         "react",
         "vue"
     ],
-    "author": "Clianta",
+    "author": "Eutexa",
     "license": "MIT",
     "homepage": "https://eutexa.com",
     "repository": {

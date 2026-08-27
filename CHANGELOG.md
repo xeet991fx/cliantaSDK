@@ -5,6 +5,38 @@ All notable changes to the Eutexa SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-08-27
+
+### Changed
+
+- **Package renamed `@eutexa/sdk` → `eutexa-sdk`** (unscoped). Install with
+  `npm install eutexa-sdk`; subpaths are now `eutexa-sdk/react`, `/vue`,
+  `/angular`, `/svelte`. The scoped `@eutexa/sdk` is frozen at 2.0.0 and will
+  receive no further releases. Exported identifiers, bundle filenames and the
+  runtime API are unchanged, so the only edit a consumer makes is the specifier.
+
+### Fixed
+
+- Corrected the API-key placeholder in the `CRMClient.sendEvent()` example from
+  `mm_live_...` to `eutx_live_...`, matching the prefix Eutexa now issues. The
+  old value shipped in every build output including `index.d.ts`, so it was what
+  editors surfaced on hover — the one place a developer looks to learn the key
+  format.
+
+## [2.0.0] - 2026-07-18
+
+### Breaking
+
+Rebrand from Clianta to Eutexa. Every consumer must update imports:
+
+- Package renamed `@clianta/sdk` → `@eutexa/sdk`.
+- Default export and named factory renamed `clianta()` → `eutexa()`.
+- `CliantaConfig` type renamed `EutexaConfig`.
+- Bundle entry points renamed `dist/clianta.*` → `dist/eutexa.*`.
+
+Framework wrappers (`/react`, `/vue`, `/angular`, `/svelte`) keep their subpaths;
+only the package scope and the exported identifiers changed.
+
 ## [1.8.0] - 2026-05-26
 
 This release is a **data-quality** release. After running the SDK on our own

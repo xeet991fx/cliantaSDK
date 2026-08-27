@@ -3,7 +3,7 @@
 > **Enterprise-grade visitor intelligence for your CRM.**
 > Auto-captures every interaction on your website and feeds it directly into Eutexa CRM — zero manual tracking code required.
 
-[![npm](https://img.shields.io/npm/v/@eutexa/sdk)](https://www.npmjs.com/package/@eutexa/sdk)
+[![npm](https://img.shields.io/npm/v/eutexa-sdk)](https://www.npmjs.com/package/eutexa-sdk)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue)](https://www.typescriptlang.org/)
 
 ---
@@ -13,7 +13,7 @@
 ### 1. Install
 
 ```bash
-npm install @eutexa/sdk
+npm install eutexa-sdk
 ```
 
 ### 2. Integrate
@@ -35,7 +35,7 @@ NEXT_PUBLIC_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 
 ```tsx
 // app/layout.tsx
-import { EutexaProvider } from '@eutexa/sdk/react';
+import { EutexaProvider } from 'eutexa-sdk/react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -67,7 +67,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { EutexaProvider } from '@eutexa/sdk/react';
+import { EutexaProvider } from 'eutexa-sdk/react';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -95,7 +95,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```typescript
 // src/main.ts
 import { createApp } from 'vue';
-import { EutexaPlugin } from '@eutexa/sdk/vue';
+import { EutexaPlugin } from 'eutexa-sdk/vue';
 import App from './App.vue';
 
 const app = createApp(App);
@@ -125,7 +125,7 @@ export const environment = {
 ```typescript
 // src/app/eutexa.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
-import { createEutexaTracker, EutexaTrackerInstance } from '@eutexa/sdk/angular';
+import { createEutexaTracker, EutexaTrackerInstance } from 'eutexa-sdk/angular';
 import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -169,7 +169,7 @@ VITE_EUTEXA_API_ENDPOINT=https://your-crm-backend.com
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { initEutexa } from '@eutexa/sdk/svelte';
+  import { initEutexa } from 'eutexa-sdk/svelte';
   import { setContext } from 'svelte';
 
   const eutexa = initEutexa({
@@ -215,7 +215,7 @@ The SDK works perfectly without any of the following. These are for teams that w
 ### Custom Event Tracking
 
 ```typescript
-import { useEutexa } from '@eutexa/sdk/react';
+import { useEutexa } from 'eutexa-sdk/react';
 
 const tracker = useEutexa();
 tracker?.track('purchase', 'Order Completed', { value: 99, currency: 'USD' });
@@ -276,7 +276,7 @@ tracker?.deleteData();
 Full type support included:
 
 ```typescript
-import type { TrackerCore, EutexaConfig, GroupTraits, MiddlewareFn } from '@eutexa/sdk';
+import type { TrackerCore, EutexaConfig, GroupTraits, MiddlewareFn } from 'eutexa-sdk';
 ```
 
 ---
@@ -309,5 +309,5 @@ import type { TrackerCore, EutexaConfig, GroupTraits, MiddlewareFn } from '@eute
 ## Support
 
 - **Documentation**: [docs.eutexa.online](https://docs.eutexa.online)
-- **NPM**: [@eutexa/sdk](https://www.npmjs.com/package/@eutexa/sdk)
+- **NPM**: [eutexa-sdk](https://www.npmjs.com/package/eutexa-sdk)
 - **Email**: support@eutexa.online

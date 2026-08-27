@@ -12,7 +12,7 @@
 // 'use client';
 
 import { useEffect, createContext, useContext, useState } from 'react';
-import { eutexa, type TrackerCore, type ConsentState } from '@eutexa/sdk';
+import { eutexa, type TrackerCore, type ConsentState } from 'eutexa-sdk';
 
 interface EutexaContextType {
     tracker: TrackerCore | null;
@@ -269,7 +269,7 @@ async function authenticateUser(email: string, password: string) {
 /*
 // pages/_app.tsx
 import { useEffect } from 'react';
-import { eutexa } from '@eutexa/sdk';
+import { eutexa } from 'eutexa-sdk';
 import type { AppProps } from 'next/app';
 
 export default function App({ Component, pageProps }: AppProps) {
